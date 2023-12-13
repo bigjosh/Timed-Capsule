@@ -21,3 +21,14 @@ U3,REGULATOR,TPS7A0230PDBVR,TI,,Possible,0.5,https://www.digikey.com/en/products
 U4,Battery Holder,KEYSTONE1024,Keystone,,,1.601,https://www.digikey.com/product-detail/en/keystone-electronics/1024/36-1024-ND/2178268
 U5,Battery Holder,KEYSTONE1024,KeyStone,,,1.601,https://www.digikey.com/product-detail/en/keystone-electronics/1024/36-1024-ND/2178268
 T1,Test pads,CAP_0603,,DNP,,,
+
+-
+
+S1,Reed Switch,ESE18R61D,TS04-66-43-BK-160-SMT,,,0.18,https://www.digikey.com/en/products/detail/cui-devices/TS04-66-43-BK-160-SMT/15634332
+S2,Button,ESE18R61D,TS04-66-43-BK-160-SMT,,,0.18,https://www.digikey.com/en/products/detail/cui-devices/TS04-66-43-BK-160-SMT/15634332
+S3,Button,ESE18R61D,TS04-66-43-BK-160-SMT,,,0.18,https://www.digikey.com/en/products/detail/cui-devices/TS04-66-43-BK-160-SMT/15634332
+
+B1,Battery Holder,KEYSTONE1089,Keystone,,,2.7,https://www.digikey.com/en/products/detail/keystone-electronics/1089/5118851
+B2,Battery Holder,KEYSTONE1089,Keystone,,,2.7,https://www.digikey.com/en/products/detail/keystone-electronics/1089/5118851
+
+Q1,MOSFET Transistor,A03422,Alpha & Omega Semiconductor Inc.,,Possible,0.11,https://www.digikey.com/en/products/detail/alpha-omega-semiconductor-inc/AO3422/1855787
