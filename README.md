@@ -1,68 +1,69 @@
-# TSL
+# Timed Capsule
 
-PCB and firmware for the CW&T Time Since Launch project.
+PCB and firmware for the CW&T Timed Capsule project.
 
-![image](https://github.com/bigjosh/TSL-calibre-MSP/assets/5520281/20763a34-e9c7-4478-9f9a-e5587940cfa9)
+![image](https://github.com/bigjosh/Timed-Capsule/assets/5520281/91afad04-3e84-4fa1-a295-33e6752bc5ca)
 
 
-Buy it here...
-https://cwandt.com/products/time-since-launch?variant=19682206089275
+The Timed Capsule is a commitment device. You put something in the capsule and set the timer for between 1 hour and 100 years and you will not be able to (nondestructively) get the thing for that long. 
+
+![image](https://github.com/bigjosh/Timed-Capsule/assets/5520281/0ab3330d-875e-4f35-816d-c331ee688e84)
 
 
 ## Design goals:
 
 * Run for decades on 2xAA batteries.
-* Stay accurate to to within ±2ppm over the lifetime.  
-* Replaceable batteries, with continued timekeeping during a reasonable battery swap time period.  
+* Stay accurate to to within ±2ppm over the lifetime.
+* Have enough power at the end of 50 years in torage to still be able to decisively open the locking mechanisim. 
+* Replaceable batteries
 
 ## Critical parts:
 
 * MSP430FR4133 processor for LCD driving and supervision
 * RV3032-C7 RTC for precision timekeeping
-* Custom 12-digit, dynamic LCD glass 
-* 2x Energizer Ultimate Lithium AA batteries
+* 7-digit, dynamic LCD glass 
+* 4x Energizer Ultimate Lithium AA batteries 
 * Optional TPS7A0230 3V regulator for generating LCD bias voltage
-
-### The leap year problem
-
-The RX8900 counts any year ending in `00` as a leap year, but in real life 2100 is not a leap year.
-
-This means that if a unit is programmed in the 2000's and triggered on 3/1/2100 then the trigger date in EEPROM will be 2/29/2100, and any day after that will be 1 day behind the actual calendar date when the trigger was pulled. The count will still always be right, and the only way you'd know about this is if you inspect the trigger time with the diagnostic mode or if you have to reset the RTC.
-
-This divergence will increase by 1 for each non-leap year ending in `00` after 2000, including 2200 and 2300 (2400 is a leap). 
-
-Why don't we just correct for this in the firmware? Well because as far as the RX8900 is concerned 2/29/2100 actually happened, so a trigger could happen on that day.
-
-Since this problem is predicable we can account for it when resetting the RTC in units triggered after 2/28/2100. 
 
 ## Method of Operation
 
-### Ready To Launch mode 
+### Set timer
 
-Shows a mesmerizing winding pattern with 1Hz update rate. 
+Use the `MOVE` button to change cursor posision on the LCD, use the `CHANGE` button to change the current position. 
 
-The purpose of this pattern is to show the user that we are ready and willing, and also make apparent any bad LCD segments stuck either on or off. 
+The rightmost position is the units and can be...
 
-We enter this mode on power up if the trigger pin has never been pulled before, and we exit it when the pin is pulled. 
+| Value | Units | 
+| - | - | 
+| `H` | Hours |
+| `d` | Days |
+| `y` | Years | 
 
-### Time Since Launch Mode
+Note that a [year is 365.2422 days](https://pumas.nasa.gov/sites/default/files/examples/04_21_97_1.pdf). 
 
-Here we count up the days, hours, minutes, and seconds since the trigger was pulled. 
+### Lock 
 
-When we reach 1,000,000 days we switch to Long Now mode. 
+1. Turn the locking handle on the top clockwise 1/4 turn until it stops.
+2. Release the handle and let it return to the resting position.
 
-### Long Now mode
+### Wait
 
-Shows `999999 999999` blinking forevermore. 
+Durring the countdown, the LCD  will rotate though...
 
-Indicates that the trigger pull was more than 1 million days (~2740 years) ago so we can not display it accurately. 
+1. Days remaining as 'xxxxxd`.
+2. Hours, minutes, and seconds until the current day is done as `HHMMSS`.
+3. A blank screen.
 
-The idea here is to avoid problems of people trying to ebay old TSL units that have rolled over by misrepresenting their true milage.
+... stopping on each screen for 1 second. 
 
-#### Error Codes 
+If there is less than 1 day remaing until unlock, then the `HHMMMSS` display will show continuously. 
 
-Descibed here...
-[CCS%20Project/error_codes.h](CCS%20Project/error_codes.h)
+### Unlock
+
+At the appointed hour, the locking mechanisim will automatically retract with a satisfying thud. You should then be able to remove the cap.
+
+Note that the mechanisim will not be able to release unless the handle is in the resting position (turned all the way counter clockwise). If you accedentially turn the handle clockwise when the mechanisim is unlocking, then it will stay locked.
+Since the timer automatically resets to 1 hour after each unlock attempt, you can turn the handle counter clockwise and then clockwise again to restart the countdown and - as long as you let the handle return to the resting position- it will unlock then.
 
 ## Interesting twists
 
@@ -79,9 +80,10 @@ Using CLKOUT also means that we get 2 interrupts each second (one on rising, one
 To make LCD updates as power efficient as possible, we precomute the LCDMEM values for every second and minute update and store them in tables. Because we were careful to put all the segments making up both seconds digits into a single word of memory (minutes also), we can do a full update with a single 16 bit write. We further optimize but keeping the pointer to the next table lookup in a register and using the MSP430's post-decrement addressing mode to also increment the pointer for free (zero cycles). This lets us execute a full update on non-rollover seconds in only 4 instructions (not counting ISR overhead). This code is here...
 [CCS%20Project/tsl_asm.asm#L91](CCS%20Project/tsl_asm.asm#L91)
 
-## Backup mode
+## No power mode
 
-The RTC is set up to enter backup mode when it sees the voltage form the batteries drop lower than the voltage form its internal backup capacitors. This should only happen durring a battery change. Note that this can cuase unexpected behaivor if you do a battery change and replace the existing batteries with ones that have a lower total voltage. In this case the RTC will not come out of backup mode when the new batteries are inserted, andso it will not appear to be working to the MSP$#) when it boots up and will generate an "Error Code 1" (ERROR_BAD_CLOCK). If this happens, pull the batteries out for about 30 seconds to let the backup capacitor voltage run down so it will then be less than the batteries. Now reinsert the batteries and the RTC show now see a battery voltage higher than the capacitor voltage and wake up and operate normally. 
+If you somehow manage to interrupt the power durring countdown, the timer will resume counting at whatever time is was at when the power was removed. 
+
 
 ## Build notes
 
