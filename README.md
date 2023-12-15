@@ -91,11 +91,11 @@ If you somehow manage to interrupt the power durring countdown, the timer will r
 
 ## Current Usage
 
-| Mode | Vcc=3.55V| Vcc=2.6V |
-| - | -: | -: | 
-| Setting mode | 1.3uA | 1.2uA | 
-| Countdown mode | 1.1uA | 1.0uA | 
-| Unlock | 1A | 1A |
+| Mode | Vcc=3.55V<br>(2xAA fresh) | Vcc=2.6V<br>(2xAA after many decades) |  Vcc=7.0V<br>(4xAA fresh) | Vcc=5.2V (4xAA after many decades) |
+| - | -: | -: | -: | -: |
+| Setting mode | 1.3uA | 1.2uA |  |  |
+| Countdown mode | 1.1uA | 1.0uA |  |  |
+| Unlock |  |  | 1.2A | 1A |
 
 3.55V is approximately the voltage of a pair of fresh Energizer Ultra batteries.
 2.6V is approximately the voltage when the screen starts to become hard to read. 
