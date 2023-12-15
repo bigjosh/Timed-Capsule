@@ -14,7 +14,7 @@ The Timed Capsule is a commitment device. You put something in the capsule and s
 
 * Run for decades on 2xAA batteries.
 * Stay accurate to to within ±2ppm over the lifetime.
-* Have enough power at the end of 50 years in torage to still be able to decisively open the locking mechanisim. 
+* Have enough power at the end of 50 years in storage to still be able to decisively open the locking mechanisim. 
 * Replaceable batteries
 
 ## Critical parts:
@@ -22,7 +22,7 @@ The Timed Capsule is a commitment device. You put something in the capsule and s
 * MSP430FR4133 processor for LCD driving and supervision
 * RV3032-C7 RTC for precision timekeeping
 * 7-digit, dynamic LCD glass 
-* 4x Energizer Ultimate Lithium AA batteries 
+* 4x Energizer Ultimate Lithium AA batteries
 * Optional TPS7A0230 3V regulator for generating LCD bias voltage
 
 ## Method of Operation
