@@ -102,8 +102,6 @@ If you somehow manage to interrupt the power durring countdown, the timer will r
 
 Note that voltage drop over time is not expected to be linear with Energizer Ultra cells. These batteries are predicted to spend most of their lives towards the higher end of the voltage range and only start dropping when they get near to their end of life.  
 
-There are gains of up to 5uA possible from having fewer LCD segments lit. Not sure how actionable this is. We could, say, save 0.5uA by blinking the Time Since Launch mode screen off every other second. It is likely that Ready To Launch mode's low power relative to Time Since Launch mode is due to the fact that it has only 1 segment lit per digit. 
-
 ### Measurement conditions
 
 Production board from initial batch. Bare PCB on my desk (not in tube).  
