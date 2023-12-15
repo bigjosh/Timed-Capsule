@@ -67,6 +67,8 @@ Since the timer automatically resets to 1 hour after each unlock attempt, you ca
 
 ## Interesting twists
 
+It is hard to find common solenoids that definitively actuate at voltages/currents available with our AA batteries, so we picked the solenoids carefully and use an extra pair AA batteries soley for a voltage boost at the moment we pull them. You might suggest using either a boost inductor-based boost circuit or a capacitor-based charge pump to avoid ths, but it would Require very,very big parts to store enough energy to be useful here (we can not use electrolitic caps since they will likely fail over the decades). It is hard to compete with the density of chemical energy!
+
 We are using the MSP430's Very Low Power Oscilator (VLO) to drive the LCD since it is actually lower power than the 32Khz XTAL. It is also slower, so more power savings. 
 
 We do NOT use the MSP430's "LPMx.5" extra low power modes since they end up using more power than the "LPM4" mode that we are using. This is becuase it takes 250us to wake from the "x.5" modes and durring this time, the MCU pulls about 200uA. Since we wake 2 times per second, this is just not worth it. If we only woke every, say, 15 seconds then we could likely save ~0.3uA by using the "x.5" modes. 
@@ -75,7 +77,7 @@ We use the RTC's CLKOUT push-pull signal directly into an MSP430 io pin. This wo
 the MSP430 though the protection diodes durring battery changes. We depend on the fact that the RTC will go into backup mode durring battery changes, which will
 float the CLKOUT pin. 
 
-Using CLKOUT also means that we get 2 interrupts each second (one on rising, one falling edge). We quickly ignore ever other one in the ISR. It would seem more power efficient to use the periodic timer function of the RTC to generate a 0.5Hz output, but enabling the periodic timer uses an additional 0.2uA (undocumented!), so not worth it. 
+Using CLKOUT also means that we get 2 interrupts each second (one on rising, one falling edge). We quickly ignore every other one in the ISR. It would seem more power efficient to use the periodic timer function of the RTC to generate a 0.5Hz output, but enabling the periodic timer uses an additional 0.2uA (undocumented!), so not worth it. 
 
 To make LCD updates as power efficient as possible, we precomute the LCDMEM values for every second and minute update and store them in tables. Because we were careful to put all the segments making up both seconds digits into a single word of memory (minutes also), we can do a full update with a single 16 bit write. We further optimize but keeping the pointer to the next table lookup in a register and using the MSP430's post-decrement addressing mode to also increment the pointer for free (zero cycles). This lets us execute a full update on non-rollover seconds in only 4 instructions (not counting ISR overhead). This code is here...
 [CCS%20Project/tsl_asm.asm#L91](CCS%20Project/tsl_asm.asm#L91)
@@ -91,9 +93,9 @@ If you somehow manage to interrupt the power durring countdown, the timer will r
 
 | Mode | Vcc=3.55V| Vcc=2.6V |
 | - | -: | -: | 
-| Ready to Launch Running | 1.3uA | 1.2uA | 
-| Ready to Launch Static | 1.1uA | 1.0uA | 
-| Time Since Launch | 1.8uA | 1.7uA |
+| Setting mode | 1.3uA | 1.2uA | 
+| Countdown mode | 1.1uA | 1.0uA | 
+| Unlock | 1A | 1A |
 
 3.55V is approximately the voltage of a pair of fresh Energizer Ultra batteries.
 2.6V is approximately the voltage when the screen starts to become hard to read. 
