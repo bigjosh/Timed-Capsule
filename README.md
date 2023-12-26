@@ -24,6 +24,7 @@ The Timed Capsule is a commitment device. You put something in the capsule and s
 * 7-digit, dynamic LCD glass 
 * 4x Energizer Ultimate Lithium AA batteries
 * Optional TPS7A0230 3V regulator for generating LCD bias voltage
+* The solenoid which pulls decicively at 6V
 
 ## Method of Operation
 
@@ -67,7 +68,7 @@ Since the timer automatically resets to 1 hour after each unlock attempt, you ca
 
 ## Interesting twists
 
-It is hard to find common solenoids that definitively actuate at voltages/currents available with our AA batteries, so we picked the solenoids carefully and use an extra pair AA batteries soley for a voltage boost at the moment we pull them. You might suggest using either a boost inductor-based boost circuit or a capacitor-based charge pump to avoid ths, but it would Require very,very big parts to store enough energy to be useful here (we can not use electrolitic caps since they will likely fail over the decades). It is hard to compete with the density of chemical energy!
+It is hard to find common solenoids that definitively actuate at voltages/currents available with our AA batteries, so we picked the solenoids carefully and use an extra pair AA batteries soley for a voltage boost at the moment we pull them. You might suggest using either a boost inductor-based boost circuit or a capacitor-based charge pump to avoid ths, but it would require some very,very big parts to store enough energy to be useful here (we can not use electrolitic caps since they will likely fail over the decades). It is hard to compete with the density of chemical energy! You might also suggest using a motor and gears to do the actuation (this is how most battery powered door locks do it), but it is hard to imagine gears that stay reliable after sitting still for 50 years. 
 
 We are using the MSP430's Very Low Power Oscilator (VLO) to drive the LCD since it is actually lower power than the 32Khz XTAL. It is also slower, so more power savings. 
 
@@ -81,6 +82,8 @@ Using CLKOUT also means that we get 2 interrupts each second (one on rising, one
 
 To make LCD updates as power efficient as possible, we precomute the LCDMEM values for every second and minute update and store them in tables. Because we were careful to put all the segments making up both seconds digits into a single word of memory (minutes also), we can do a full update with a single 16 bit write. We further optimize but keeping the pointer to the next table lookup in a register and using the MSP430's post-decrement addressing mode to also increment the pointer for free (zero cycles). This lets us execute a full update on non-rollover seconds in only 4 instructions (not counting ISR overhead). This code is here...
 [CCS%20Project/tsl_asm.asm#L91](CCS%20Project/tsl_asm.asm#L91)
+
+We also further reduce power using the MSP430's LCD buffer hardware. We keep the "days" display in one LCD buffer and the "HHMMSS" in the the other buffer. This way we only need to update one bit to switch between the two and therefore only end up needing to write to the "days" page once per day to update the day count. 
 
 ## No power mode
 
