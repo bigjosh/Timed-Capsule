@@ -21,11 +21,18 @@
 #include "lcd_display_exp.h"
 
 
-void lcd_segment_set_to_lcdmem( lcd_segment_location_t seg  ) {
+void lcd_segment_set( byte * lcdmem_base , lcd_segment_location_t seg  ) {
 
     byte lpin = lcdpin_to_lpin[ seg.lcd_pin ];
 
-    LCDMEM[ LCDMEM_OFFSET_FOR_LPIN( lpin ) ] |= lcd_shifted_com_bits( lpin , seg.lcd_com );
+    lcdmem_base[ LCDMEM_OFFSET_FOR_LPIN( lpin ) ] |= lcd_shifted_com_bits( lpin , seg.lcd_com );
+
+}
+
+void lcd_segment_set_to_lcdmem( lcd_segment_location_t seg  ) {
+
+    lcd_sement_set( LCDMEM , seg );
+
 
 }
 
@@ -89,8 +96,6 @@ void lcd_write_blank_to_lcdmem( byte digitplace ) {
 
 }
 
-
-
 // Thanks chatGPT for this function! :)
 template<typename T>
 constexpr bool areAllEqual(const T& first) {
@@ -102,16 +107,35 @@ constexpr bool areAllEqual(const T& first, const T& second, const Args&... args)
     return (first == second) && areAllEqual(second, args...);
 }
 
+
+// returns true if all of the segments in the digit place are all contained in a single writeable word in LCDMEM
+// This depends on the PCB layout , and we were careful to make sure this will be true since it lets us update these
+// two digits on the display with a single instruction.
+
+
+constexpr bool test_all_digit_segments_contained_in_one_word( const lcd_digit_segments_t segements ) {
+
+    return areAllEqual(
+
+            LCDMEMW_OFFSET_FOR_LPIN( lcdpin_to_lpin[ segments.SEG_A.lcd_pin ]  ),
+            LCDMEMW_OFFSET_FOR_LPIN( lcdpin_to_lpin[ segments.SEG_B.lcd_pin ]  ),
+            LCDMEMW_OFFSET_FOR_LPIN( lcdpin_to_lpin[ segments.SEG_C.lcd_pin ]  ),
+            LCDMEMW_OFFSET_FOR_LPIN( lcdpin_to_lpin[ segments.SEG_D.lcd_pin ]  ),
+            LCDMEMW_OFFSET_FOR_LPIN( lcdpin_to_lpin[ segments.SEG_E.lcd_pin ]  ),
+            LCDMEMW_OFFSET_FOR_LPIN( lcdpin_to_lpin[ segments.SEG_F.lcd_pin ]  ),
+            LCDMEMW_OFFSET_FOR_LPIN( lcdpin_to_lpin[ segments.SEG_G.lcd_pin ]  ),
+
+    );
+
+}
+
+
 // returns true if all of the segments in the two digits places are all contained in a single writeable word in LCDMEM
 // This depends on the PCB layout , and we were careful to make sure this will be true since it lets us update these
 // two digits on the display with a single instruction.
 
 
-constexpr bool test_all_digit_segments_contained_in_one_word( const byte digitplace1 , const byte digitplace2) {
-
-    lcd_digit_segments_t digitplace_1_segments = lcd_digit_segments[ digitplace1 ];
-    lcd_digit_segments_t digitplace_2_segments = lcd_digit_segments[ digitplace2 ];
-
+constexpr bool test_all_digit_segments_contained_in_one_word( const lcd_digit_segments_t digitplace_1_segments  , const lcd_digit_segments_t digitplace_2_segments) {
 
     return areAllEqual(
 
@@ -134,13 +158,74 @@ constexpr bool test_all_digit_segments_contained_in_one_word( const byte digitpl
 
 }
 
+// Returns a word that you would OR into the appropriate LCDMEMW word to turn on the specified segment
+
+constexpr word word_bits_for_segment( lcd_segment_location_t seg_location ) {
+
+    byte lpin = lcdpin_to_lpin( seg_location.lcd_pin );
+
+    byte com_bits = lcd_shifted_com_bits( lpin , seg_location.lcd_com );  // THis is the value we would put into an LCDMEM byte
+
+    if ( LCDMEM_OFFSET_FOR_LPIN(seg_location.lcd_pin) & 1 ) {           // Is this lpin in the top byte of the LCDMEM word?
+
+        return com_bits << 8;
+
+    } else {
+
+        return com_bits;
+    }
+
+}
+
+// THis returns a word that you would OR into the appropriate LCDMEM word to turn on the segments in the specified digitplace to show the specified glyph
+
+constexpr word glyph_bits( lcd_digit_segments_t digitplace_segs , glyph_segment_t glyph ) {
+
+    static_assert( test_all_digit_segments_contained_in_one_word( segs ) , "All of the segments in this digit must be in the same word in LCDMEM for this optimization to work" );
+
+    word bits = 0;          // Start with all off
+
+    if ( glyph & SEG_A_BIT ) {
+        bits |=   word_bits_for_segment( digit_segments.SEG_A);
+    }
+
+    if ( glyph & SEG_B_BIT ) {
+        bits |=   word_bits_for_segment( digit_segments.SEG_B);
+    }
+
+    if ( glyph & SEG_C_BIT ) {
+        bits |=   word_bits_for_segment( digit_segments.SEG_C);
+    }
+
+    if ( glyph & SEG_D_BIT ) {
+        bits |=   word_bits_for_segment( digit_segments.SEG_D);
+    }
+
+    if ( glyph & SEG_E_BIT ) {
+        bits |=   word_bits_for_segment( digit_segments.SEG_E);
+    }
+
+    if ( glyph & SEG_F_BIT ) {
+        bits |=   word_bits_for_segment( digit_segments.SEG_F);
+    }
+
+    if ( glyph & SEG_G_BIT ) {
+        bits |=   word_bits_for_segment( digit_segments.SEG_G);
+    }
+
+    return bits;
+
+}
+
 // these arrays hold the pre-computed words that we will write to word in LCD memory that
 // contain the pairs of seconds and mins digits on the LCD. We keep these in RAM intentionally for power and latency savings.
 // use fill_lcd_words() to fill these arrays.
 
 
+template <
+
 // Cross check to make sure the current LCD layout and connections are compatible with this optimization
-static_assert( test_all_digit_segments_contained_in_one_word( SECS_ONES_DIGITPLACE,  SECS_TENS_DIGITPLACE)   , "All of the segments in the seconds ones and tens digits must be in the same LCDMEM word for this optimization to work" );
+static_assert( test_all_digit_segments_contained_in_one_word(  tens_digitplace_segments,  ones_digitplace_segments )   , "All of the segments in the seconds ones and tens digits must be in the same LCDMEM word for this optimization to work" );
 
 #pragma RETAIN
 word secs_lcd_words[SECS_PER_MIN];
@@ -152,26 +237,28 @@ word *secs_lcdmem_word = LCDMEMW +  ( LCDMEMW_OFFSET_FOR_LPIN( lcdpin_to_lpin[  
 
 // Builds a RAM-based table of words where each word is the value you would assign to a single LCD word address to display a given 2-digit number
 // Note that this only works for cases where all 4 of the LPINs for a pair of digits are on consecutive LPINs that use only 2 LCDM addresses.
-// In our case, seconds and minutes meet this constraint (not by accident!) so we can do the *vast* majority of all updates efficiently with just a single instruction word assignment.
-// Note that if the LPINs are not in the right places, then this will fail by having some unlit segments in some numbers.
+// In our case, seconds, minutes, and hours meet this constraint (not by accident!) so we can do the *vast* majority of all updates efficiently with just a single instruction word assignment.
 
 
-void fill_lcd_words( word *words , const byte tens_digit_index , const byte ones_digit_index , const byte max_tens_digit , const byte max_ones_digit ) {
+void fill_lcd_words( word *words , const byte tens_digitplace , const byte ones_digitplace , const byte max_tens_digit , const byte max_ones_digit ) {
 
-    const lcd_digit_segments_t ones_digit_segments = lcd_digit_segments[ones_digit_index];
-    const lcd_digit_segments_t tens_digit_segments = lcd_digit_segments[tens_digit_index];
+    const lcd_digit_segments_t ones_digitplace_segments = lcd_digit_segments[ones_digitplace];
+    const lcd_digit_segments_t tens_digitplace_segments = lcd_digit_segments[tens_digitplace];
+
 
     byte n = 0 ;
 
     for( byte tens_digit = 0; tens_digit < max_tens_digit ; tens_digit ++ ) {
 
-        // word tens_digit_mask =
-
+        // Start with all of bits for the segments for the tens digit turned on
+        word tens_digitplace_bits = segments_bits( tens_digitplace_segments , digit_glyphs[ tens_digit ] );
 
         for( byte ones_digit = 0; ones_digit < max_ones_digit ; ones_digit ++ ) {
 
+            word ones_digitplace_bits = segments_bits( ones_digitplace_segments , digit_glyphs[ ones_digit ] );
 
-            words[n] = 0x00;
+            // Combines all the segments that need to be lit to show this two digit number
+            words[n] = tens_digitplace_bits | ones_digitplace_bits;
             n++;
         }
 
