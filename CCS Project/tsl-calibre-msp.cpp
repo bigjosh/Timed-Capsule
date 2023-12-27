@@ -18,6 +18,7 @@
 #include "define_lcd_font.h"
 
 #include "lcd_display.h"
+#include "lcd_display_exp.h"
 
 
 #define RV_3032_I2C_ADDR (0b01010001)           // Datasheet 6.6
@@ -322,7 +323,9 @@ void initLCD() {
 
 
     LCDMEMCTL |= LCDCLRM;                                      // Clear LCD memory
-    while ( LCDMEMCTL & LCDCLRM );                             // Wait for clear to complete.
+
+#warning check if this works
+    //while ( LCDMEMCTL & LCDCLRM );                             // Wait for clear to complete.
 
     // For TSL
     // Configure COMs and SEGs
@@ -1267,7 +1270,7 @@ void time_since_launch_reference() {
     // Show current seconds on LCD using fast lookup table. This is a 16 bit MCU and we were careful to put the 4 nibbles that control the segments of the two seconds digits all in the same memory word,
     // so we can set all the segments of the seconds digits with a single word write.
 
-    *secs_lcdmem_word = secs_lcd_words[rtc_secs];
+    *secs_lcdmemw = secs_lcd_words[rtc_secs];
 
     /*
         // Wow, this compiler is not good. Below we can remove a whole instruction with 3 cycles that is completely unnecessary.
@@ -1295,6 +1298,12 @@ int main( void )
     initGPIO();
     initLCD();
 
+    LCDMEM[18] = 0xff;
+
+    LCDMEM[16] = 0xff;
+
+
+    while (1);
 
 #warning
     // General function to write a glyph onto the LCD. No constraints on how pins are connected, but inefficient.
@@ -1344,7 +1353,7 @@ int main( void )
     //LCDPCTL2 |= LCDS36 | LCDS35  | LCDS34 | LCDS33 | LCDS32 ;         // Enable L36 for LCD
 
     while (1) {
-        for( unsigned i=0; i<8 ; i++) {
+        for( unsigned i=0; i<100 ; i++) {
 
             LCDMEM[18] = (1<<i)&0xf;
 
