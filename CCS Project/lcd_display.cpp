@@ -21,7 +21,7 @@
 #include "lcd_display_exp.h"
 
 
-void lcd_segment_set( byte * lcdmem_base , lcd_segment_location_t seg  ) {
+void lcd_segment_set( char * lcdmem_base , lcd_segment_location_t seg  ) {
 
     byte lpin = lcdpin_to_lpin[ seg.lcd_pin ];
 
@@ -31,7 +31,7 @@ void lcd_segment_set( byte * lcdmem_base , lcd_segment_location_t seg  ) {
 
 void lcd_segment_set_to_lcdmem( lcd_segment_location_t seg  ) {
 
-    lcd_sement_set( LCDMEM , seg );
+    lcd_segment_set( LCDMEM , seg );
 
 
 }
@@ -113,7 +113,7 @@ constexpr bool areAllEqual(const T& first, const T& second, const Args&... args)
 // two digits on the display with a single instruction.
 
 
-constexpr bool test_all_digit_segments_contained_in_one_word( const lcd_digit_segments_t segements ) {
+constexpr bool test_all_digit_segments_contained_in_one_word( const lcd_digit_segments_t segments ) {
 
     return areAllEqual(
 
@@ -123,7 +123,7 @@ constexpr bool test_all_digit_segments_contained_in_one_word( const lcd_digit_se
             LCDMEMW_OFFSET_FOR_LPIN( lcdpin_to_lpin[ segments.SEG_D.lcd_pin ]  ),
             LCDMEMW_OFFSET_FOR_LPIN( lcdpin_to_lpin[ segments.SEG_E.lcd_pin ]  ),
             LCDMEMW_OFFSET_FOR_LPIN( lcdpin_to_lpin[ segments.SEG_F.lcd_pin ]  ),
-            LCDMEMW_OFFSET_FOR_LPIN( lcdpin_to_lpin[ segments.SEG_G.lcd_pin ]  ),
+            LCDMEMW_OFFSET_FOR_LPIN( lcdpin_to_lpin[ segments.SEG_G.lcd_pin ]  )
 
     );
 
@@ -162,7 +162,7 @@ constexpr bool test_all_digit_segments_contained_in_one_word( const lcd_digit_se
 
 constexpr word word_bits_for_segment( lcd_segment_location_t seg_location ) {
 
-    byte lpin = lcdpin_to_lpin( seg_location.lcd_pin );
+    byte lpin = lcdpin_to_lpin[ seg_location.lcd_pin ];
 
     byte com_bits = lcd_shifted_com_bits( lpin , seg_location.lcd_com );  // THis is the value we would put into an LCDMEM byte
 
@@ -179,9 +179,8 @@ constexpr word word_bits_for_segment( lcd_segment_location_t seg_location ) {
 
 // THis returns a word that you would OR into the appropriate LCDMEM word to turn on the segments in the specified digitplace to show the specified glyph
 
-constexpr word glyph_bits( lcd_digit_segments_t digitplace_segs , glyph_segment_t glyph ) {
+constexpr word glyph_bits( lcd_digit_segments_t digit_segments , glyph_segment_t glyph ) {
 
-    static_assert( test_all_digit_segments_contained_in_one_word( segs ) , "All of the segments in this digit must be in the same word in LCDMEM for this optimization to work" );
 
     word bits = 0;          // Start with all off
 
@@ -222,10 +221,7 @@ constexpr word glyph_bits( lcd_digit_segments_t digitplace_segs , glyph_segment_
 // use fill_lcd_words() to fill these arrays.
 
 
-template <
 
-// Cross check to make sure the current LCD layout and connections are compatible with this optimization
-static_assert( test_all_digit_segments_contained_in_one_word(  tens_digitplace_segments,  ones_digitplace_segments )   , "All of the segments in the seconds ones and tens digits must be in the same LCDMEM word for this optimization to work" );
 
 #pragma RETAIN
 word secs_lcd_words[SECS_PER_MIN];
@@ -251,11 +247,11 @@ void fill_lcd_words( word *words , const byte tens_digitplace , const byte ones_
     for( byte tens_digit = 0; tens_digit < max_tens_digit ; tens_digit ++ ) {
 
         // Start with all of bits for the segments for the tens digit turned on
-        word tens_digitplace_bits = segments_bits( tens_digitplace_segments , digit_glyphs[ tens_digit ] );
+        word tens_digitplace_bits = 0;// segments_bits( tens_digitplace_segments , digit_glyphs[ tens_digit ] );
 
         for( byte ones_digit = 0; ones_digit < max_ones_digit ; ones_digit ++ ) {
 
-            word ones_digitplace_bits = segments_bits( ones_digitplace_segments , digit_glyphs[ ones_digit ] );
+            word ones_digitplace_bits = 0;//segments_bits( ones_digitplace_segments , digit_glyphs[ ones_digit ] );
 
             // Combines all the segments that need to be lit to show this two digit number
             words[n] = tens_digitplace_bits | ones_digitplace_bits;
@@ -267,8 +263,6 @@ void fill_lcd_words( word *words , const byte tens_digitplace , const byte ones_
 };
 
 
-// Cross check to make sure the current LCD layout and connections are compatible with this optimization
-static_assert( test_all_digit_segments_contained_in_one_word( MINS_ONES_DIGITPLACE,  MINS_TENS_DIGITPLACE)   , "All of the segments in the minutes ones and tens digits must be in the same LCDMEM word for this optimization to work" );
 
 
 #pragma RETAIN

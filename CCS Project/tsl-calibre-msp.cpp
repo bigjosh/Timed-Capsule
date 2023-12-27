@@ -1301,11 +1301,11 @@ int main( void )
     // Remember that means that different segments in the same digit could be at different LCDMEM locations!
 
     lcd_write_glyph_to_lcdmem( 0 , glyph_0);
-    lcd_write_glyph_to_lcdmem( 1 , glyph_1);
-    lcd_write_glyph_to_lcdmem( 2 , glyph_2);
-    lcd_write_glyph_to_lcdmem( 3 , glyph_3);
-    lcd_write_glyph_to_lcdmem( 4 , glyph_4);
-    lcd_write_glyph_to_lcdmem( 5 , glyph_5);
+    lcd_write_glyph_to_lcdmem( 1 , glyph_J);
+    lcd_write_glyph_to_lcdmem( 2 , glyph_O);
+    lcd_write_glyph_to_lcdmem( 3 , glyph_S);
+    lcd_write_glyph_to_lcdmem( 4 , glyph_H);
+    lcd_write_glyph_to_lcdmem( 5 , glyph_SPACE);
 
 
     while (1) {
