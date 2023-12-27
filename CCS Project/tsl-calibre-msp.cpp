@@ -4,13 +4,21 @@
 #include "i2c_master.h"
 
 #include "error_codes.h"
-#include "lcd_display.h"
 
 #include "ram_isrs.h"
 
 #include "tsl_asm.h"
 
+
 #include "acid_fram_record.hpp"
+
+#include "define_lcd_pinout.h"
+#include "define_lcd_to_msp430_connections.h"
+#include "define_msp430_lcd_device.h"
+#include "define_lcd_font.h"
+
+#include "lcd_display.h"
+
 
 #define RV_3032_I2C_ADDR (0b01010001)           // Datasheet 6.6
 
@@ -209,10 +217,22 @@ void initLCD() {
     // Configure LCD pins
     SYSCFG2 |= LCDPCTL;                                 // LCD R13/R23/R33/LCDCAP0/LCDCAP1 pins enabled
 
-    // TODO: We can make a template to compute these from logical_digits
-    LCDPCTL0 = 0b1110111100111110;  // LCD pins L15-L01, 1=enabled
-    LCDPCTL1 = 0b1111110000111111;  // LCD pins L31-L16, 1=enabled
-    LCDPCTL2 = 0b0000000000001111;  // LCD pins L35-L32, 1=enabled
+    // Enable LCD pins as defined in the LCD connections header
+    // Iterate though each of the define LPINs
+
+    for( byte lpin  : lcdpin_to_lpin ) {
+
+        if (lpin <16 ) {
+            if (lpin>0) {                       // Note that we ignore 0 here because we use 0 as a placeholder. This is ugly.
+                LCDPCTL0 |= 1 << (lpin-0);
+            }
+        } else if (lpin <32 ) {         // Note that we ignore 0 here because we use 0 as a placeholder. This is ugly.
+            LCDPCTL1 |= 1 << (lpin-16);
+        } else if (lpin <48 ) {         // Note that we ignore 0 here because we use 0 as a placeholder. This is ugly.
+            LCDPCTL2 |= 1 << (lpin-32);
+        }
+
+    }
 
     // LCDCTL0 = LCDSSEL_0 | LCDDIV_7;                     // flcd ref freq is xtclk
 
@@ -290,36 +310,40 @@ void initLCD() {
 
 
     // LCD Operation - Charge pump enable, Vlcd=Vcc , charge pump FREQ=/256Hz (lowest)  2.5uA - Good for testing without a regulator
-    //LCDVCTL = LCDCPEN |  LCDSELVDD | (LCDCPFSEL0 | LCDCPFSEL1 | LCDCPFSEL2 | LCDCPFSEL3);
+    LCDVCTL = LCDCPEN |  LCDSELVDD | (LCDCPFSEL0 | LCDCPFSEL1 | LCDCPFSEL2 | LCDCPFSEL3);
 
     /* WINNER for controlled Vlcd - Uses external TSP7A0228 regulator for Vlcd on R33 */
     // LCD Operation - Charge pump enable, Vlcd=external from R33 pin , charge pump FREQ=/256Hz (lowest). 2.1uA/180uA  @ Vcc=3.5V . Vlcd=2.8V  from TPS7A0228 no blinking.
-    LCDVCTL = LCDCPEN |   (LCDCPFSEL0 | LCDCPFSEL1 | LCDCPFSEL2 | LCDCPFSEL3);
+    //LCDVCTL = LCDCPEN |   (LCDCPFSEL0 | LCDCPFSEL1 | LCDCPFSEL2 | LCDCPFSEL3);
 
 
     // LCD Operation - Charge pump enable, Vlcd=external from R33 pin , charge pump FREQ=/64Hz . 2.1uA/180uA  @ Vcc=3.5V . Vlcd=2.8V  from TPS7A0228 no blinking.
     //LCDVCTL = LCDCPEN |   (LCDCPFSEL0 | LCDCPFSEL1 );
 
 
-    //LCDMEMCTL |= LCDCLRM;                                      // Clear LCD memory
+    LCDMEMCTL |= LCDCLRM;                                      // Clear LCD memory
+    while ( LCDMEMCTL & LCDCLRM );                             // Wait for clear to complete.
 
     // For TSL
     // Configure COMs and SEGs
+
+
+    // TODO: This should be parameterized.
     LCDCSSEL0 = LCDCSS8 | LCDCSS9 | LCDCSS10 | LCDCSS11 ;     // L8-L11 are the 4 COM pins
     LCDCSSEL1 = 0x0000;
     LCDCSSEL2 = 0x0000;
 
-    // L08 = MSP_COM3 = LCD_COM3
-    // L09 = MSP_COM2 = LCD_COM2
-    // L10 = MSP_COM1 = LCD_COM1
-    // L11 = MSP_COM0 = LCD_COM0
+    // L08 = MSP_COM0 = LCD_COM1
+    // L09 = MSP_COM1 = LCD_COM2
+    // L10 = MSP_COM2 = LCD_COM3
+    // L11 = MSP_COM3 = LCD_COM4
 
     // Once we have selected the COM lines above, we have to connect them in the LCD memory. See Figure 17-2 in MSP430FR4x family guide.
     // Each nibble in the LCDMx regs holds 4 bits connecting the L pin to one of the 4 COM lines (two L pins per reg)
     // Note if you change these then you also have to adjust lcd_show_squigle_animation()
 
-    LCDM4 =  0b01001000;  // L09=MSP_COM2  L08=MSP_COM3
-    LCDM5 =  0b00010010;  // L10=MSP_COM0  L11=MSP_COM1
+    LCDM4 =  0b00100001;  // L09=MSP_COM1  L08=MSP_COM0
+    LCDM5 =  0b10000100;  // L10=MSP_COM3  L11=MSP_COM2
 
     LCDBLKCTL = 0x00;       // Disable blinking. We do this because this bit is not cleared on reset so if we are resetting out of at blinking mode then it would otherwise persist.
 
@@ -920,7 +944,8 @@ __interrupt void startup_isr(void) {
             SET_CLKOUT_VECTOR( &RTL_MODE_BEGIN );
 
             // When the trigger is pulled, it will generate a hardware interrupt and call this ISR which will start time since launch mode.
-            SET_TRIGGER_VECTOR(trigger_isr);
+#warning
+ //           SET_TRIGGER_VECTOR(&trigger_isr);
 
         } else {
 
@@ -1093,7 +1118,8 @@ void tsl_next_day() {
 
     lcd_show_centesimus_dies_message();
 
-    SET_CLKOUT_VECTOR( post_centiday_isr );
+#warning
+    //SET_CLKOUT_VECTOR( post_centiday_isr );
 
     if (days_digits[2] < 9) {
         days_digits[2]++;
@@ -1268,6 +1294,71 @@ int main( void )
 
     initGPIO();
     initLCD();
+
+
+#warning
+    // General function to write a glyph onto the LCD. No constraints on how pins are connected, but inefficient.
+    // Remember that means that different segments in the same digit could be at different LCDMEM locations!
+
+    lcd_write_glyph_to_lcdmem( 0 , glyph_0);
+    lcd_write_glyph_to_lcdmem( 1 , glyph_1);
+    lcd_write_glyph_to_lcdmem( 2 , glyph_2);
+    lcd_write_glyph_to_lcdmem( 3 , glyph_3);
+    lcd_write_glyph_to_lcdmem( 4 , glyph_4);
+    lcd_write_glyph_to_lcdmem( 5 , glyph_5);
+
+
+    while (1) {
+        for( unsigned i=0; i<16; i++ ) {
+
+            lcd_write_glyph_to_lcdmem( 0 , digit_glyphs[ i ] );
+
+            __delay_cycles(500000);
+
+            lcd_write_blank_to_lcdmem( 0  );
+
+        }
+    }
+    while(1);
+
+
+
+
+    // Enable L8-L11 as COM0-COM3 pins
+    //LCDPCTL0 |= LCDS8 | LCDS9 | LCDS10 | LCDS11 ;
+
+    // Make those pins COM0-COM3
+    LCDCSSEL0 = LCDCSS8 | LCDCSS9 | LCDCSS10 | LCDCSS11 ;     // L8-L11 are the 4 COM pins
+    LCDCSSEL1 = 0x0000;
+    LCDCSSEL2 = 0x0000;
+
+    // Once we have selected the COM lines above, we have to connect them in the LCD memory. See Figure 17-2 in MSP430FR4x family guide.
+    // Each nibble in the LCDMx regs holds 4 bits connecting the L pin to one of the 4 COM lines (two L pins per reg)
+    // Note if you change these then you also have to adjust lcd_show_squigle_animation()
+
+    LCDM4 =  0b00100001;  // L09=MSP_COM1  L08=MSP_COM0
+    LCDM5 =  0b10000100;  // L10=MSP_COM3  L11=MSP_COM2
+
+
+    // LETS TURN ON L36 the battery indicators.
+    //LCDPCTL2 |= LCDS36 | LCDS35  | LCDS34 | LCDS33 | LCDS32 ;         // Enable L36 for LCD
+
+    while (1) {
+        for( unsigned i=0; i<8 ; i++) {
+
+            LCDMEM[18] = (1<<i)&0xf;
+
+
+            LCDMEM[ LCDMEM_OFFSET_FOR_LPIN( lcdpin_to_lpin[ lcd_digit_segments[ SECS_ONES_DIGITPLACE].SEG_A.lcd_pin ] ) ] = (1<<i);
+
+
+
+            __delay_cycles(500000);
+        }
+    }
+
+    while(1);
+
     // Power up display with a nice dash pattern
     lcd_show_dashes();
 
@@ -1367,7 +1458,8 @@ int main( void )
 
         // Set us up to run the loading/ready-to-launch sequence on the next tick
         // Note that the trigger ISR will be activated when we get into ready-to-launch
-        SET_CLKOUT_VECTOR( &startup_isr);
+#warning
+        //SET_CLKOUT_VECTOR( &startup_isr);
 
         // We will go into "load pin" mode when next second ticks. This gives the pull-up a chance to take effect and also avoids any bounce aliasing right at power up.
 

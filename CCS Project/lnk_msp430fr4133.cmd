@@ -177,7 +177,7 @@ SECTIONS
     #ifndef __LARGE_CODE_MODEL__
     .TI.ramfunc : {} load=FRAM, run=RAM, table(BINIT)
     #else
-    .TI.ramfunc : {} load=FRAM | FRAM2, run=RAM, table(BINIT)
+    .TI.ramfunc : {} load=FRAM , run=RAM, table(BINIT)
     #endif
   #endif
 #endif

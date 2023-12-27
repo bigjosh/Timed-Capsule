@@ -39,11 +39,8 @@
 
 			; Unforntunately hours digits can not be on consecutive LPINs and we are out of call-saved registers
 			; anyway so we update the hours digits seporately using these procomuted segment byte arrays
-			.ref 	hours_lcd_bytes
+			.ref 	hours_lcd_words
 			.ref	rtc_hours
-
-			; A complicated 2D table of words that we write to LCDMEM for the frames of the ready-to-launch animation
-			.ref 	ready_to_launch_lcd_frame_words
 
 ; 17us when minutes do not change (!)
 
@@ -122,7 +119,7 @@ TSL_MODE_ISR
 
 			; If we get here then incremented hours is 1-9
 			; Display the hours 1 digit
-			MOV.B		hours_lcd_bytes(R10),&(LCDM0W_L+13)		; Display hours in the hours ones digit on the LCD
+			MOV.W		hours_lcd_words(R10),&(LCDM0W_L+13)		; Display hours in the hours ones digit on the LCD
 
 			JMP 		TSL_DONE					; This wastes 3 cycles, we could just repeat the ending motif here.
 
@@ -133,8 +130,8 @@ HOURS_GE_10
 			; If we get here then incremented hours is 10-19
 
 			; We could save a couple of cycles here by only displaying the tens digit if hours is equal to "10"
-			MOV.B		&(hours_lcd_bytes+1),&(LCDM0W_L+10)			; Display "1" in hours 10's digit
-			MOV.B		(hours_lcd_bytes-10)(R10),&(LCDM0W_L+13)	; Display hours 1's digit in the hours ones digit on the LCD (see what I did there? :) )
+			;MOV.B		&(hours_lcd_bytes+1),&(LCDM0W_L+10)			; Display "1" in hours 10's digit
+			;MOV.B		(hours_lcd_bytes-10)(R10),&(LCDM0W_L+13)	; Display hours 1's digit in the hours ones digit on the LCD (see what I did there? :) )
 
 			JMP 		TSL_DONE					; This wastes 3 cycles, we could just repeat the ending motif here.
 
@@ -145,8 +142,8 @@ HOURS_GE_20
 
 			; If we get here then incremented hours is 20-23
 
-			MOV.B		&(hours_lcd_bytes+2),&(LCDM0W_L+10)			; Display "2" in hours 10's digit
-			MOV.B		(hours_lcd_bytes-20)(R10),&(LCDM0W_L+13)	; Display hours 1's digit in the hours ones digit on the LCD (see what I did there? :) )
+			;MOV.B		&(hours_lcd_bytes+2),&(LCDM0W_L+10)			; Display "2" in hours 10's digit
+			;MOV.B		(hours_lcd_bytes-20)(R10),&(LCDM0W_L+13)	; Display hours 1's digit in the hours ones digit on the LCD (see what I did there? :) )
 
 			JMP 		TSL_DONE					; This wastes 3 cycles, we could just repeat the ending motif here.
 
@@ -157,8 +154,8 @@ HOURS_EQ_24
 
 			MOV.W		#0, R10			; Reset hours to 0
 
-			MOV.B		&(hours_lcd_bytes+0),&(LCDM0W_L+13)			; Display "0" in hours 10's digit
-			MOV.B		&(hours_lcd_bytes+0),&(LCDM0W_L+10)			; Display "0" in hours 1's digit
+			;MOV.B		&(hours_lcd_bytes+0),&(LCDM0W_L+13)			; Display "0" in hours 10's digit
+			;MOV.B		&(hours_lcd_bytes+0),&(LCDM0W_L+10)			; Display "0" in hours 1's digit
 
 			CALL		#_Z12tsl_next_dayv							; Call the C++ side to increment day (this is the mangled name for `tsl_next_day()`
 
@@ -207,8 +204,6 @@ TSL_MODE_REFRESH
 
 ;Begin the RTL mode ISR
 ;Set the ISR vector to point here to start this mode.
-;Assumes the symbol `ready_to_launch_lcd_frames` points to a table of LCD frames for the squiggle animation
-			.ref		ready_to_launch_lcd_frames
 
 RTL_MODE_BEGIN:
 	;This entry point sets up all the registers and changes the PORT_1 vector to point to the optimized ISR, which will get called directly on subsequent interrupts
@@ -219,7 +214,6 @@ RTL_MODE_BEGIN:
 	;expected to preserve them so they have the same value on return from a function as they had at the point of the
 	;call.
 
-	mov.w	#ready_to_launch_lcd_frame_words,R12 		; Save the address of the base of the table. We will use this as a live pointer.
 	mov.w	#(128-1),R13 								; We will use this for a 1 cycle, no branch way to normalize our pointer which by luck is into an 8*(8*2) table
 	mov.w	R12,R14										; Keep a copy of the base address to OR in later
 

@@ -10,6 +10,7 @@
 
 #include "util.h"
 
+
 // *** LCD layout
 
 constexpr uint8_t DIGITPLACE_COUNT=12;
@@ -28,6 +29,14 @@ const byte READY_TO_LAUNCH_LCD_FRAME_COUNT=8;                             // How
 // Fills the arrays
 
 void initLCDPrecomputedWordArrays();
+
+
+// General function to write a glyph onto the LCD. No constraints on how pins are connected, but inefficient.
+// Remember that means that different segments in the same digit could be at different LCDMEM locations!
+
+void lcd_write_glyph_to_lcdmem( byte digitplace, glyph_segment_t glyph );
+
+void lcd_write_blank_to_lcdmem( byte digitplace );
 
 // Show the digit x at position p
 // where p=0 is the rightmost digit
