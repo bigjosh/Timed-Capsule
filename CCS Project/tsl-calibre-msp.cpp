@@ -1303,6 +1303,8 @@ int main( void )
     for( int x=0; x< 100; x++) {
 
         *secs_lcdmemw = secs_lcd_words[x];
+        *mins_lcdmemw = mins_lcd_words[x];
+        *hours_lcdmemw = hours_lcd_words[x];
 
         __delay_cycles(500000);
 

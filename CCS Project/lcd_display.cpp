@@ -283,71 +283,31 @@ constexpr unsigned int HEX = 16;
 
 constexpr unsigned int size = 100;
 
+
+// Define and compile-time fill the LCD cache arrays. NOte that these will fail at compile time if the pins layout is not compatible with this optimization.
 constexpr auto secs_lcd_word_cache_struct  = ConstexprArray< generate_lcd_cache_word< SECS_TENS_DIGITPLACE  , SECS_ONES_DIGITPLACE  , DEC  >, size >();
 constexpr auto mins_lcd_word_cache_struct  = ConstexprArray< generate_lcd_cache_word< MINS_TENS_DIGITPLACE  , MINS_ONES_DIGITPLACE  , DEC  >, size >();
 constexpr auto hours_lcd_word_cache_struct = ConstexprArray< generate_lcd_cache_word< HOURS_TENS_DIGITPLACE , HOURS_ONES_DIGITPLACE , DEC  >, size >();
 
 
+// Make the addresses of the cache arrays available to ASM IST
 #pragma RETAIN
 constexpr const unsigned int * const secs_lcd_words =secs_lcd_word_cache_struct.array;
-
-
-// Write a value from the array into this word to update the two seconds digits on the LCD display
-
 #pragma RETAIN
-// This address is hardcoded into the ASM so we don't need the reference here.
+constexpr const unsigned int * const mins_lcd_words =mins_lcd_word_cache_struct.array;
+#pragma RETAIN
+constexpr const unsigned int * const hours_lcd_words =hours_lcd_word_cache_struct.array;
+
+
+// Make the addresses where you should write the cached values to in order to display the specified secs on the LCD
+// Note that we can take any pin (we picked SEG_A) since the above compile time checks ensure that any of the segments would produce the same address
+#pragma RETAIN
 unsigned int *secs_lcdmemw =&( LCDMEMW[  ( LCDMEMW_OFFSET_FOR_LPIN( lcdpin_to_lpin[  lcd_digit_segments[ SECS_ONES_DIGITPLACE ].SEG_A.lcd_pin ] ) ) ] );
-
-
-/*
-// Builds a RAM-based table of words where each word is the value you would assign to a single LCD word address to display a given 2-digit number
-// Note that this only works for cases where all 4 of the LPINs for a pair of digits are on consecutive LPINs that use only 2 LCDM addresses.
-// In our case, seconds, minutes, and hours meet this constraint (not by accident!) so we can do the *vast* majority of all updates efficiently with just a single instruction word assignment.
-
-
-void fill_lcd_words( word *words , const byte tens_digitplace , const byte ones_digitplace , const byte max_tens_digit , const byte max_ones_digit ) {
-
-    const lcd_digit_segments_t ones_digitplace_segments = lcd_digit_segments[ones_digitplace];
-    const lcd_digit_segments_t tens_digitplace_segments = lcd_digit_segments[tens_digitplace];
-
-
-    byte n = 0 ;
-
-    for( byte tens_digit = 0; tens_digit < max_tens_digit ; tens_digit ++ ) {
-
-        // Start with all of bits for the segments for the tens digit turned on
-        word tens_digitplace_bits = segments_bits( tens_digitplace_segments , digit_glyphs[ tens_digit ] );
-
-        for( byte ones_digit = 0; ones_digit < max_ones_digit ; ones_digit ++ ) {
-
-            word ones_digitplace_bits = segments_bits( ones_digitplace_segments , digit_glyphs[ ones_digit ] );
-
-            // Combines all the segments that need to be lit to show this two digit number
-            words[n] = tens_digitplace_bits | ones_digitplace_bits;
-            n++;
-        }
-
-    }
-
-};
-
-
-// Cross check to make sure the current LCD layout and connections are compatible with this optimization
-static_assert( test_all_digit_segments_contained_in_one_word( MINS_ONES_DIGITPLACE,  MINS_TENS_DIGITPLACE)   , "All of the segments in the minutes ones and tens digits must be in the same LCDMEM word for this optimization to work" );
-
-
-*/
-
 #pragma RETAIN
-word mins_lcd_words[SECS_PER_MIN];
-
-// Write a value from the array into this word to update the two digits on the LCD display
-word *mins_lcdmem_word = LCDMEMW +  ( LCDMEMW_OFFSET_FOR_LPIN( lcdpin_to_lpin[  lcd_digit_segments[ SECS_TENS_DIGITPLACE ].SEG_A.lcd_pin ] ) );
-
-
-#define MINS_PER_HOUR 60
+unsigned int *mins_lcdmemw =&( LCDMEMW[  ( LCDMEMW_OFFSET_FOR_LPIN( lcdpin_to_lpin[  lcd_digit_segments[ MINS_ONES_DIGITPLACE ].SEG_A.lcd_pin ] ) ) ] );
 #pragma RETAIN
-word hours_lcd_words[SECS_PER_MIN];
+unsigned int *hours_lcdmemw =&( LCDMEMW[  ( LCDMEMW_OFFSET_FOR_LPIN( lcdpin_to_lpin[  lcd_digit_segments[ HOURS_ONES_DIGITPLACE ].SEG_A.lcd_pin ] ) ) ] );
+
 
 
 // Define a full LCD frame so we can put it into LCD memory in one shot.
