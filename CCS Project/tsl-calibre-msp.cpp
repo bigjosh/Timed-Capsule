@@ -1298,9 +1298,16 @@ int main( void )
     initGPIO();
     initLCD();
 
-    LCDMEM[18] = 0xff;
+    //LCDMEM[18] = 0xff;      // For proof of live testing. Turn on battery icons.
 
-    LCDMEM[16] = 0xff;
+    for( int x=0; x< 100; x++) {
+
+        *secs_lcdmemw = secs_lcd_words[x];
+
+        __delay_cycles(500000);
+
+    }
+
 
 
     while (1);

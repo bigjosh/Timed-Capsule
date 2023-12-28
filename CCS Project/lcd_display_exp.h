@@ -8,7 +8,7 @@
 #define LCD_DISPLAY_EXP_H_
 
 // This is an array of 100 words corresponding to the 100 two digit numbers.
-extern unsigned int *secs_lcd_words;
+extern const unsigned int * const secs_lcd_words;
 // Write a value from that array into this word to update the two digits on the LCD display
 extern unsigned int *secs_lcdmemw;
 

@@ -7,15 +7,24 @@
 
 
 // Needed for LCDMEM addresses
+
+
+
+
+
+// Get all the definitions we need to use the LCD
+
+
 #include <msp430.h>
 
 #include "util.h"
 
-// Get all the definitions we need to use the LCD
+
 #include "define_lcd_pinout.h"
 #include "define_lcd_to_msp430_connections.h"
 #include "define_msp430_lcd_device.h"
 #include "define_lcd_font.h"
+
 
 #include "lcd_display.h"
 #include "lcd_display_exp.h"
@@ -160,11 +169,14 @@ constexpr bool test_all_digit_segments_contained_in_one_word( const lcd_digit_se
 
 // Returns a word that you would OR into the appropriate LCDMEMW word to turn on the specified segment
 
-constexpr word word_bits_for_segment( lcd_segment_location_t seg_location ) {
+constexpr unsigned int word_bits_for_segment( lcd_segment_location_t seg_location ) {
 
     byte lpin = lcdpin_to_lpin[ seg_location.lcd_pin ];
 
-    byte com_bits = lcd_shifted_com_bits( lpin , seg_location.lcd_com );  // THis is the value we would put into an LCDMEM byte
+    // Note there was a bug on the line below that took a whole day to find. The type was `byte` and instead of the compiler saying "may exceed type size",
+    // instead it threw "value must be constant" far, far away and only when the values passed had the lowest bit set. Arg.
+
+    unsigned int com_bits = lcd_shifted_com_bits( lpin , seg_location.lcd_com );  // This is the value we would put into an LCDMEM byte
 
     if ( LCDMEM_OFFSET_FOR_LPIN(seg_location.lcd_pin) & 1 ) {           // Is this lpin in the top byte of the LCDMEM word?
 
@@ -179,7 +191,7 @@ constexpr word word_bits_for_segment( lcd_segment_location_t seg_location ) {
 
 // THis returns a word that you would OR into the appropriate LCDMEM word to turn on the segments in the specified digitplace to show the specified glyph
 
-constexpr word glyph_bits( const lcd_digit_segments_t digitplace_segs , const glyph_segment_t glyph ) {
+constexpr unsigned int glyph_bits( const lcd_digit_segments_t digitplace_segs , const glyph_segment_t glyph ) {
 
     word bits = 0;          // Start with all off
 
@@ -215,59 +227,74 @@ constexpr word glyph_bits( const lcd_digit_segments_t digitplace_segs , const gl
 
 }
 
+
+// Here is generic code for initializing a constexpr array in C++ 2014
+// Based on...
+// https://stackoverflow.com/a/34465458/3152071
+// ...but had to be modified due to this horrible problem in <MSP430.h>...
+// https://stackoverflow.com/questions/69149459/what-causes-the-error-18-expected-a-on-a-msp430
+// Use like...
+// constexpr auto myArrayStruct = ConstexprArray<square,10>();
+// constexpr auto myArray = myArrayStruct.array;
+
+
+template< unsigned int (*generator_function)(unsigned int) ,  int size>
+struct ConstexprArray {
+    constexpr ConstexprArray() : array() {
+        for (auto i = 0; i != size; ++i)
+            array[i] = generator_function(i);
+    }
+    unsigned int array[size];
+};
+
+
+// This function will generate the words that will go into the compile time cache arrays
+
+template < int tens_digitplace ,  int ones_digitplace , int radix >
+constexpr unsigned int generate_lcd_cache_word( unsigned int number ) {
+
+    constexpr lcd_digit_segments_t ones_digitplace_segments = lcd_digit_segments[ones_digitplace];
+    constexpr lcd_digit_segments_t tens_digitplace_segments = lcd_digit_segments[tens_digitplace];
+
+    // Cross check to make sure the current LCD layout and connections are compatible with this optimization
+    static_assert( test_all_digit_segments_contained_in_one_word(  tens_digitplace_segments,  ones_digitplace_segments )   , "All of the segments in the seconds ones and tens digits must be in the same LCDMEM word for this optimization to work" );
+
+    unsigned int tens_digit = number / radix;
+    unsigned int ones_digit = number - ( tens_digit * radix );
+
+    // Start with all of bits for the segments for the tens digit turned on
+    unsigned int tens_digitplace_bits = glyph_bits( tens_digitplace_segments , digit_glyphs[ tens_digit ] );
+
+    unsigned int ones_digitplace_bits = glyph_bits( ones_digitplace_segments , digit_glyphs[ ones_digit ] );
+
+    // Combines all the segments that need to be lit to show this two digit number
+    return  tens_digitplace_bits | ones_digitplace_bits;
+
+}
+
+
 // these arrays hold the pre-computed words that we will write to word in LCD memory that
 // contain the pairs of seconds and mins digits on the LCD. We keep these in RAM intentionally for power and latency savings.
 // use fill_lcd_words() to fill these arrays.
 // Assumes the numbers are base 10.
 
-// Sorry I know this should be constexpr to be compile time, but this compiler down not have constexpr initializers yet :/
+constexpr unsigned int DEC = 10;
+constexpr unsigned int HEX = 16;
 
-template < int tens_digitplace ,  int ones_digitplace >
-struct lcd_word_write_cache_t {
+constexpr unsigned int size = 100;
 
-    static const int size = 100;   // Two digits, base 10.
+constexpr auto secs_lcd_word_cache_struct  = ConstexprArray< generate_lcd_cache_word< SECS_TENS_DIGITPLACE  , SECS_ONES_DIGITPLACE  , DEC  >, size >();
+constexpr auto mins_lcd_word_cache_struct  = ConstexprArray< generate_lcd_cache_word< MINS_TENS_DIGITPLACE  , MINS_ONES_DIGITPLACE  , DEC  >, size >();
+constexpr auto hours_lcd_word_cache_struct = ConstexprArray< generate_lcd_cache_word< HOURS_TENS_DIGITPLACE , HOURS_ONES_DIGITPLACE , DEC  >, size >();
 
-    unsigned int words[size];
-
-    lcd_word_write_cache_t()  {
-
-        constexpr lcd_digit_segments_t ones_digitplace_segments = lcd_digit_segments[ones_digitplace];
-        constexpr lcd_digit_segments_t tens_digitplace_segments = lcd_digit_segments[tens_digitplace];
-
-        // Cross check to make sure the current LCD layout and connections are compatible with this optimization
-        static_assert( test_all_digit_segments_contained_in_one_word(  tens_digitplace_segments,  ones_digitplace_segments )   , "All of the segments in the seconds ones and tens digits must be in the same LCDMEM word for this optimization to work" );
-
-        byte n = 0 ;
-
-        for( byte tens_digit = 0; tens_digit < 9 ; tens_digit ++ ) {
-
-            // Start with all of bits for the segments for the tens digit turned on
-            word tens_digitplace_bits = glyph_bits( tens_digitplace_segments , digit_glyphs[ tens_digit ] );
-
-            for( byte ones_digit = 0; ones_digit < 9 ; ones_digit ++ ) {
-
-                unsigned int ones_digitplace_bits = glyph_bits( ones_digitplace_segments , digit_glyphs[ ones_digit ] );
-
-                // Combines all the segments that need to be lit to show this two digit number
-                words[n] = tens_digitplace_bits | ones_digitplace_bits;
-                n++;
-            }
-
-        }
-
-    }
-
-};
-
-lcd_word_write_cache_t< SECS_TENS_DIGITPLACE , SECS_ONES_DIGITPLACE > secs_lcd_word_cache;
 
 #pragma RETAIN
-unsigned int *secs_lcd_words = secs_lcd_word_cache.words ;
+constexpr const unsigned int * const secs_lcd_words =secs_lcd_word_cache_struct.array;
+
 
 // Write a value from the array into this word to update the two seconds digits on the LCD display
 
 #pragma RETAIN
-
 // This address is hardcoded into the ASM so we don't need the reference here.
 unsigned int *secs_lcdmemw =&( LCDMEMW[  ( LCDMEMW_OFFSET_FOR_LPIN( lcdpin_to_lpin[  lcd_digit_segments[ SECS_ONES_DIGITPLACE ].SEG_A.lcd_pin ] ) ) ] );
 
@@ -344,6 +371,7 @@ void initLCDPrecomputedWordArrays() {
     // Fill the minutes array
     //fill_lcd_words( mins_lcd_words , MINS_TENS_DIGITPLACE , MINS_ONES_DIGITPLACE , 6 , 10 );
     // Fill the array of frames for ready-to-launch-mode animation
+
 }
 
 
