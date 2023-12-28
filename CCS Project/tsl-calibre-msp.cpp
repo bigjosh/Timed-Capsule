@@ -903,98 +903,10 @@ __interrupt void trigger_isr(void) {
 */
 
 
-enum mode_t {
-    LOAD_TRIGGER,           // Waiting for pin to be inserted (shows dashes)
-    ARMING,                 // Hold-off after pin is inserted to make sure we don't inadvertently trigger on a switch bounce (lasts 0.5s)
-};
-
-mode_t mode;
 
 unsigned int step;          // LOAD_TRIGGER      - Used to keep the position of the dash moving across the display (0=leftmost position, only one dash showing)
                             // READY_TO_LAUNCH   - Which step of the squigle animation
 
-// Handle startup activities like loading the pin. Terminates into ready-to-launch mode
-//__attribute__((ramfunc))
-__interrupt void startup_isr(void) {
-
-    DEBUG_PULSE_ON();
-
-    if ( mode==ARMING ) {
-
-        // This phase is just to add a 1000ms debounce to when the trigger is initially inserted at the factory to make sure we do
-        // not accidentally fire then.
-
-        // We are currently showing "Arming" message, and we will switch to squiggles on next tick if the trigger is still in
-
-        // If trigger is still inserted 1 second later  (since we entered arming mode) , then go into READY_TO_LAUNCH were we wait for it to be pulled
-
-        if ( TBI( TRIGGER_PIN , TRIGGER_B )  ) {        // Trigger still pin inserted? (switch open, pin high)
-
-            // Now we need to setup interrupt on trigger pull to wake us when pin  goes low
-            // This way we can react instantly when the user pulls the pin.
-
-            SBI( TRIGGER_PIE  , TRIGGER_B );          // Enable interrupt on the INT pin high to low edge. Normally pulled-up when pin is inserted (switch lever is depressed)
-            SBI( TRIGGER_PIES , TRIGGER_B );          // Interrupt on high-to-low edge (the pin is pulled up by MSP430 and then RV3032 driven low with open collector by RV3032)
-
-            // Clear any pending interrupt so we will need a new transition to trigger
-            CBI( TRIGGER_PIFG , TRIGGER_B);
-
-            // Next tick will enter the ready-to-launch mode animation which will continue until the trigger is pulled.
-            SET_CLKOUT_VECTOR( &RTL_MODE_BEGIN );
-
-            // When the trigger is pulled, it will generate a hardware interrupt and call this ISR which will start time since launch mode.
-#warning
- //           SET_TRIGGER_VECTOR(&trigger_isr);
-
-        } else {
-
-            // In the unlikely case where the pin was inserted for less than 500ms, then go back to the beginning and show dash scroll and wait for it to be inserted again.
-            // This has the net effect of making an safety interlock that the pin has to be inserted for a full 1 second before we will arm.
-
-            mode = LOAD_TRIGGER;
-            step = 0;
-
-        }
-
-    } else { // if mode==LOAD_TRIGGER
-
-        // Check if trigger is inserted (pin high)
-
-        if ( TBI( TRIGGER_PIN , TRIGGER_B ) ) {       // Check if trigger has been inserted yet
-
-            // Trigger is in, we can arm now.
-
-            lcd_show_arming_message();
-
-            //Start showing the ready to launch squiggles on next tick after that
-
-            mode = ARMING;
-
-            // note that here we wait a full tick before checking that the pin is out again. This will debounce the switch for 1s when the pin is inserted.
-
-        } else {
-
-            // trigger still out
-            // Show message so person knows why we are waiting (yes, this is redundant, but heck the pin is out so we are burning fuel against the trigger pull-up anyway
-            // We do not display this message in the case where the pin is already in at startup since it would be confusing then.
-            lcd_show_load_pin_message();
-
-            step++;
-
-            if (step==LOAD_PIN_ANIMATION_FRAME_COUNT) {
-                step=0;
-            }
-
-            lcd_show_load_pin_animation(step);
-
-        }
-    }
-
-    CBI( RV3032_CLKOUT_PIFG , RV3032_CLKOUT_B );      // Clear the pending RV3032 INT interrupt flag that got us into this ISR.
-
-    DEBUG_PULSE_OFF();
-
-}
 
 
 // Spread the 6 day counter digits out to minimize superfluous digit updates and avoid mod and div operations.
@@ -1278,6 +1190,139 @@ void time_since_launch_reference() {
 
 }
 
+
+// These two countdown vars keep track of how long until we unlock. We do not initialize them since they will get set when
+// we transition from setting mode to locked mode. They are NOINIT so they will persist though resets and power cycles.
+// These are updated every 3 seconds while we are counting down in locked mode so in case we reset or lose power,
+// then we will come back up and restart where we left off. They are kept in FRAM which is persistent across power cycles,
+// and writing to these to update them only takes a single instruction.
+
+// We choose to track triple-seconds rather than seconds because (1) we have only 1/3 as many updates so less power,
+// (2) matches to the three-screen display cycle, and (3) means we can keep a full day in a single 16 bit memory location.
+
+
+#pragma NOINIT
+unsigned int countdown_tripple_secs;
+
+#pragma NOINIT
+unsigned int countdown_days;
+
+// The MSP430 guarantees that writes to a single FRAM address will be atomic, but once per day we will need to do a non-atomic
+// update of both the days and the tripple_secs, so we make a backup of the values, set the backup flag, make our updates, and clear the backup flag.
+// This ensures consistency in case we reset or lose power during the update, and we will at most miss 3 seconds.
+
+#pragma NOINIT
+unsigned int countdown_days_backup_in_progress_flag;
+
+#pragma NOINIT
+unsigned int countdown_tripple_secs_backup_value;
+
+#pragma NOINIT
+unsigned int countdown_days_backup_value;
+
+
+void setting_mode() {
+
+    enum units_t {
+        YEARS,
+        DAYS,
+        HOURS
+    };
+
+
+    units_t current_unit = units_t::HOURS;
+    unsigned long current_value = 1;        // Current value
+
+    enum cursor_t {
+        THOUSANDS,
+        HUNDRES,
+        TENS,
+        ONES,
+        UNITS
+    };
+
+    byte current_cursor = cursor_t::ONES;
+
+
+
+
+}
+
+unsigned int h=0,m=0;s=0;
+
+
+#pragma vector=RV3032_CLKOUT_VECTOR
+__interrupt void clkout_isr(void) {
+
+    s++;
+
+    if (s==60) {
+        s=0;
+
+        m++;
+        if (m==60) {
+            m=0;
+
+            h++;
+
+            if (h=24) {
+                h=0;
+            }
+
+            *hours_lcdmemw = hours_lcd_words[h];
+
+        }
+
+        *mins_lcdmemw = mins_lcd_words[m];
+
+    }
+
+    *secs_lcdmemw = secs_lcd_words[s];
+
+    RV3032_CLKOUT_PIV;
+
+}
+
+void locked_mode() {
+
+    // First we need to enable the interrupts so we wake up on each rising edge of the RV3032 clkout.
+    // The RV3032 is always set to 1Hz so this will wake us once per second.
+
+    // Now we enable the interrupt on the RTC CLKOUT pin. For now on we must remember to
+    // disable it again if we are going to end up in sleepforever mode.
+
+    // Clear any pending interrupts from the RV3032 clkout pin and then enable interrupts for the next falling edge
+    // We we should not get a real one for 500ms so we have time to do our stuff
+
+    CBI( RV3032_CLKOUT_PIFG     , RV3032_CLKOUT_B    );
+    SBI( RV3032_CLKOUT_PIE      , RV3032_CLKOUT_B    );
+
+
+    // Wait for interrupt to fire at next clkout low-to-high change to drive us into the state machine (in either "pin loading" or "time since lanuch" mode)
+    // Could also enable the trigger pin change ISR if we are in RTL mode.
+    // Note if we use LPM3_bits then we burn 18uA versus <2uA if we use LPM4_bits.
+    __bis_SR_register(LPM4_bits | GIE );                // Enter LPM4
+    __no_operation();                                   // For debugger
+
+
+}
+
+
+enum mode_t {
+    SETTING,           // Currently setting the timeout
+    LOCKED,            // Locked and counting down until we unlock
+};
+
+/*
+ * The PERSISTENT pragma may be used only with statically-initialized variables. It prevents such variables
+ * from being initialized during a reset. Persistent variables disable startup initialization; they are given an initial
+ * value when the code is loaded, but are never again initialized.
+ */
+
+#pragma #pragma PERSISTENT(mode)
+mode_t mode;
+
+
 int main( void )
 {
 
@@ -1302,6 +1347,26 @@ int main( void )
     // Initialize the RV3032 with proper clkout & backup settings.
     rv3032_init();
 
+#warning testing only
+    locked_mode();
+
+    // Start normal operation!
+
+    while (1) {
+
+        switch (mode) {
+
+        case mode_t::SETTING:
+            setting_mode();
+            break;
+
+        case mode_t::LOCKED:
+            locked_mode();
+            break;
+
+        }
+
+    }
     //LCDMEM[18] = 0xff;      // For proof of life testing. Turn on battery icons.
 
     byte s=0,m=0,h=0;
@@ -1367,7 +1432,6 @@ int main( void )
         SBI( TRIGGER_PREN , TRIGGER_B );      // Enable pull resistor
         SBI( TRIGGER_POUT , TRIGGER_B );      // Pull up
 
-        mode = LOAD_TRIGGER;                  // Go though the state machine to wait for trigger to be loaded
         step =0;                              // Used to slide a dash indicator pointing to the pin location
 
 
