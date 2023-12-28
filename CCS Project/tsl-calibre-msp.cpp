@@ -101,28 +101,6 @@ void error_mode( byte code ) {
 }
 
 
-void wiggleFlashQ1() {
-    SBI( Q1_TOP_LED_POUT , Q1_TOP_LED_B );
-    __delay_cycles(10000);
-    CBI( Q1_TOP_LED_POUT , Q1_TOP_LED_B );
-}
-
-void wiggleFlashQ2() {
-    SBI( Q2_BOT_LED_POUT , Q2_BOT_LED_B );
-    __delay_cycles(10000);
-    CBI( Q2_BOT_LED_POUT , Q2_BOT_LED_B );
-}
-
-
-// Flash the bulbs in succession
-// Leaves transistors driven off and flash bulbs off
-
-void flash() {
-    wiggleFlashQ1();
-    __delay_cycles(30000);
-    wiggleFlashQ2();
-}
-
 // Does not enable interrupts on any pins
 
 inline void initGPIO() {
@@ -137,10 +115,17 @@ inline void initGPIO() {
 
     // --- Flash bulbs off
 
-    // Set Q1 & Q2 transistor pins to output (will be driven low by default so LEDs off)
-    SBI( Q1_TOP_LED_PDIR , Q1_TOP_LED_B );
-    SBI( Q2_BOT_LED_PDIR , Q2_BOT_LED_B );
+    // Set Solenoid transistor pins to output (will be driven low by default, so off)
+    SBI( S1_PDIR , S1_B );
+    SBI( S2_PDIR , S2_B );
+    SBI( S3_PDIR , S3_B );
+    SBI( S4_PDIR , S4_B );
+    SBI( S5_PDIR , S5_B );
+    SBI( S6_PDIR , S6_B );
 
+
+
+    // TODO: Test power savings from regulator to see if it is worth the extra part.
 
     // --- TSP7A LCD voltage regulator
     SBI( TSP_IN_POUT , TSP_IN_B );          // Power up TSP
@@ -148,6 +133,7 @@ inline void initGPIO() {
 
     SBI( TSP_ENABLE_POUT , TSP_ENABLE_B );  // Enable TSP
     SBI( TSP_ENABLE_PDIR , TSP_ENABLE_B );
+
 
     // --- Debug pins
 
@@ -163,7 +149,7 @@ inline void initGPIO() {
     // ~INT in from RV3032 as INPUT with PULLUP
     // We don't use this for now, so set to drive low.
 
-    SBI( RV3032_INT_PDIR , RV3032_INT_B ); // INPUT
+    SBI( RV3032_INT_PDIR , RV3032_INT_B ); // OUTPUT, default low
 
     // Note that we can leave the RV3032 EVI pin as is - tied LOW on the PCB so it does not float (we do not use it)
     // It is hard tied low so that it does not float during battery changes when the MCU will not be running
@@ -197,6 +183,19 @@ inline void initGPIO() {
 
     CBI( TRIGGER_POUT , TRIGGER_B );      // low
     SBI( TRIGGER_PDIR , TRIGGER_B );      // drive
+
+    // --- Switches
+
+
+    // By default we set the switches to drive low so it will not use power in case the button is stuck or shorted
+    // We will switch it to pull-up later if we need to (because we have not launched yet).
+
+    CBI( SWITCH_MOVE_POUT , TRIGGER_B );      // low
+    SBI( SWITCH_MOVE_PDIR , TRIGGER_B );      // drive
+
+    CBI( SWITCH_CHANGE_POUT , TRIGGER_B );      // low
+    SBI( SWITCH_CHANGE_PDIR , TRIGGER_B );      // drive
+
 
     // Note that we do not enable the trigger pin interrupt here. It will get enabled when we
     // switch to ready-to-lanch mode when the trigger is inserted at the factory. The interrupt will then get
@@ -323,11 +322,8 @@ void initLCD() {
 
 
     LCDMEMCTL |= LCDCLRM;                                      // Clear LCD memory
+    while ( LCDMEMCTL & LCDCLRM );                             // Wait for clear to complete.
 
-#warning check if this works
-    //while ( LCDMEMCTL & LCDCLRM );                             // Wait for clear to complete.
-
-    // For TSL
     // Configure COMs and SEGs
 
 
@@ -567,7 +563,7 @@ void lock_persistant_data() {
 // Initialize RV3032 for the first time
 // Clears the low voltage flag
 // sets clkout to 1Hz
-// Enables backup capacitor
+// Disables backup function
 // Does not enable any interrupts
 
 void rv3032_init() {
@@ -589,12 +585,16 @@ void rv3032_init() {
     i2c_write( RV_3032_I2C_ADDR , 0xc3 , &clkout2_reg , 1 );
 
     // First control reg. Note that turning off backup switch-over seems to save ~0.1uA
-    //uint8_t pmu_reg = 0b01000001;         // CLKOUT off, backup switchover disabled, no charge pump, 1K OHM trickle resistor, trickle charge Vbackup to Vdd.
     //uint8_t pmu_reg = 0b01010000;          // CLKOUT off, Direct backup switching mode, no charge pump, 0.6K OHM trickle resistor, trickle charge Vbackup to Vdd. Only predicted to use 50nA more than disabled.
     //uint8_t pmu_reg = 0b01100001;         // CLKOUT off, Level backup switching mode (2v) , no charge pump, 1K OHM trickle resistor, trickle charge Vbackup to Vdd. Predicted to use ~200nA more than disabled because of voltage monitor.
     //uint8_t pmu_reg = 0b01000000;         // CLKOUT off, Other disabled backup switching mode, no charge pump, trickle resistor off, trickle charge Vbackup to Vdd
+    //uint8_t pmu_reg = 0b00011101;          // CLKOUT ON, Direct backup switching mode, no charge pump, 12K OHM trickle resistor, trickle charge Vbackup to Vdd.
+    //uint8_t pmu_reg = 0b01000000;         // CLKOUT off, backup switchover disabled, no charge pump, 1K OHM trickle resistor, trickle charge off.
+    uint8_t pmu_reg = 0b00000000;         // CLKOUT on, backup switchover disabled, no charge pump, 1K OHM trickle resistor, trickle charge off.
 
-    uint8_t pmu_reg = 0b00011101;          // CLKOUT ON, Direct backup switching mode, no charge pump, 12K OHM trickle resistor, trickle charge Vbackup to Vdd.
+
+    // TODO: which is lower power, INT or CLKOUT?
+
     i2c_write( RV_3032_I2C_ADDR , 0xc0 , &pmu_reg , 1 );
 
     uint8_t control1_reg = 0b00000100;      // TE=0 so no periodic timer interrupt, EERD=1 to disable automatic EEPROM refresh (why would you want that?).
@@ -789,7 +789,7 @@ void testLeapYear() {
 
 */
 
-// Shortcuts for setting the RAM vectors. Note we need the (void *) casts becuase the compiler won't let us make the vectors into `near __interrupt (* volatile vector)()` like it should.
+// Shortcuts for setting the RAM vectors. Note we need the (void *) casts because the compiler won't let us make the vectors into `near __interrupt (* volatile vector)()` like it should.
 
 #define SET_CLKOUT_VECTOR(x) do {RV3032_CLKOUT_VECTOR_RAM = (void *) x;} while (0)
 #define SET_TRIGGER_VECTOR(x) do {TRIGGER_VECTOR_RAM = (void *) x;} while (0)
@@ -867,10 +867,6 @@ __interrupt void trigger_isr(void) {
         // We could also see an interrupt if the CLKOUT signal was low when trigger pulled (50% likelihood) since it will go high on reset.
 
         CBI( RV3032_CLKOUT_PIFG , RV3032_CLKOUT_B );      // Clear any pending interrupt from CLKOUT
-
-        // Flash lights
-
-        flash();
 
         // Start ticking from... now!
         // (We rely on the secs, mins, hours, and days_digits[] all having been init'ed to zeros.)
@@ -1295,87 +1291,10 @@ int main( void )
     PMMCTL0_H = PMMPW_H;                // Open PMM Registers for write
     PMMCTL0_L &= ~(SVSHE);              // Disable high-side SVS
 
+    // Init GPIO first to be safe.
     initGPIO();
+    // Init LCD next so we can talk
     initLCD();
-
-    //LCDMEM[18] = 0xff;      // For proof of live testing. Turn on battery icons.
-
-    for( int x=0; x< 100; x++) {
-
-        *secs_lcdmemw = secs_lcd_words[x];
-        *mins_lcdmemw = mins_lcd_words[x];
-        *hours_lcdmemw = hours_lcd_words[x];
-
-        __delay_cycles(500000);
-
-    }
-
-
-
-    while (1);
-
-#warning
-    // General function to write a glyph onto the LCD. No constraints on how pins are connected, but inefficient.
-    // Remember that means that different segments in the same digit could be at different LCDMEM locations!
-
-    lcd_write_glyph_to_lcdmem( 0 , glyph_0);
-    lcd_write_glyph_to_lcdmem( 1 , glyph_1);
-    lcd_write_glyph_to_lcdmem( 2 , glyph_2);
-    lcd_write_glyph_to_lcdmem( 3 , glyph_3);
-    lcd_write_glyph_to_lcdmem( 4 , glyph_4);
-    lcd_write_glyph_to_lcdmem( 5 , glyph_5);
-
-
-    while (1) {
-        for( unsigned i=0; i<16; i++ ) {
-
-            lcd_write_glyph_to_lcdmem( 0 , digit_glyphs[ i ] );
-
-            __delay_cycles(500000);
-
-            lcd_write_blank_to_lcdmem( 0  );
-
-        }
-    }
-    while(1);
-
-
-
-
-    // Enable L8-L11 as COM0-COM3 pins
-    //LCDPCTL0 |= LCDS8 | LCDS9 | LCDS10 | LCDS11 ;
-
-    // Make those pins COM0-COM3
-    LCDCSSEL0 = LCDCSS8 | LCDCSS9 | LCDCSS10 | LCDCSS11 ;     // L8-L11 are the 4 COM pins
-    LCDCSSEL1 = 0x0000;
-    LCDCSSEL2 = 0x0000;
-
-    // Once we have selected the COM lines above, we have to connect them in the LCD memory. See Figure 17-2 in MSP430FR4x family guide.
-    // Each nibble in the LCDMx regs holds 4 bits connecting the L pin to one of the 4 COM lines (two L pins per reg)
-    // Note if you change these then you also have to adjust lcd_show_squigle_animation()
-
-    LCDM4 =  0b00100001;  // L09=MSP_COM1  L08=MSP_COM0
-    LCDM5 =  0b10000100;  // L10=MSP_COM3  L11=MSP_COM2
-
-
-    // LETS TURN ON L36 the battery indicators.
-    //LCDPCTL2 |= LCDS36 | LCDS35  | LCDS34 | LCDS33 | LCDS32 ;         // Enable L36 for LCD
-
-    while (1) {
-        for( unsigned i=0; i<100 ; i++) {
-
-            LCDMEM[18] = (1<<i)&0xf;
-
-
-            LCDMEM[ LCDMEM_OFFSET_FOR_LPIN( lcdpin_to_lpin[ lcd_digit_segments[ SECS_ONES_DIGITPLACE].SEG_A.lcd_pin ] ) ] = (1<<i);
-
-
-
-            __delay_cycles(500000);
-        }
-    }
-
-    while(1);
 
     // Power up display with a nice dash pattern
     lcd_show_dashes();
@@ -1383,63 +1302,41 @@ int main( void )
     // Initialize the RV3032 with proper clkout & backup settings.
     rv3032_init();
 
-    // Initialize the lookup tables we use for efficiently updating the LCD
-    initLCDPrecomputedWordArrays();
+    //LCDMEM[18] = 0xff;      // For proof of life testing. Turn on battery icons.
 
-    // Check if this is the first time we've ever been powered up.
-    if (persistent_data.once_flag!=0x01) {
+    byte s=0,m=0,h=0;
 
+    while (1) {
 
-        // First clear the low voltage flag on the RV3032 so from now on we will care if it looses time.
-        // We check if these flags have been set on each power up to know if the RTC still knows what time it is, or if the battery was out for too long.
+        *secs_lcdmemw = secs_lcd_words[s];
+        *mins_lcdmemw = mins_lcd_words[m];
+        *hours_lcdmemw = hours_lcd_words[h];
 
-        rv3032_clear_LV_flags();
+        unsigned start_val = TBI( RV3032_CLKOUT_PIN, RV3032_CLKOUT_B );
+        while (TBI( RV3032_CLKOUT_PIN, RV3032_CLKOUT_B )==start_val); // wait for any transition
 
-        // Now remember that we did our start up. From now on, the RTC will run on its own forever.
-        unlock_persistant_data();
-        persistent_data.once_flag=0x01;             // Remember that we already started up once and never do it again.
-        persistent_data.launch_flag=0xff;           // Clear the launch flag even though we should never have to
-        lock_persistant_data();
+        lcd_segment_set_to_lcdmem(lcd_segment_dot1);
 
-        // Flash the LEDs to prove they work.
-        flash();
+        while (TBI( RV3032_CLKOUT_PIN, RV3032_CLKOUT_B )!=start_val); // wait to go back
 
-        lcd_show_first_start_message();
-        sleepforeverandever();
+        lcd_segment_clear_to_lcdmem(lcd_segment_dot1);
 
-        // After first start up, unit must be re-powered to enter normal operation.
-    }
-
-
-    // Read the state of the RV3032. Returns an error if the chip has lost power since it was set (so the time is invalid) or if bad data from the RTC
-    uint8_t rtcState = RV3032_read_state();
-
-    if (rtcState==2) {
-
-        // We got bad data from the RTC. Could be defective chip or
-        // bad PCB connection, but most likely is that batteries were pulled
-        // and new batteries had lower voltage than old, so RTC stayed in backup mode.
-        // If this does happen, you can just wait a few minutes for the RTC backup voltage to
-        // drop and then remove and reinsert the batteries to restart and it should be fine.
-
-        error_mode( ERROR_BAD_CLOCK );
-
-    }
-
-    if (rtcState==1) {
-
-        // RTC lost power at some point so nothing we can do except show an error message forever.
-
-        if (persistent_data.launch_flag != 0x01) {
-            lcd_show_batt_errorcode( BATT_ERROR_PRELAUNCH );
-        } else {
-            lcd_show_batt_errorcode( BATT_ERROR_POSTLAUNCH );
+        s++;
+        if (s==100) {
+            s=0;
+            m++;
+            if (m==100) {
+                m=0;
+                h++;
+                if (h==100) {
+                    h=0;
+                }
+            }
         }
 
-        // Mind as well turn it off since we it does not know what time it is
-        blinkforeverandever();
-
     }
+
+
 
     // If we get here then we know the RTC is good and that it has good clock data (ie it has been continuously powered since it was commissioned at the factory)
 

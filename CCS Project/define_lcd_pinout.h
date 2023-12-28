@@ -55,6 +55,14 @@ constexpr lcd_segment_location_t lcd_segment_batt_level[] = {                 //
 #define HOURS_ONES_DIGITPLACE ( 1)
 #define HOURS_TENS_DIGITPLACE ( 0)
 
+constexpr uint8_t DIGITPLACE_COUNT=6;
+
+// Normalize the positions so index 0 is rightmost
+constexpr byte digit_positions_rj( byte pos ) {
+
+    return 5-pos;
+}
+
 // What LCD pin each LCD COM is on. These indexes match to the com values in the table above.
 // This is really a map but we make it into an array so it can be constexpr.
 

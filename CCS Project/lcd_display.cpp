@@ -316,42 +316,11 @@ unsigned int *hours_lcdmemw =&( LCDMEMW[  ( LCDMEMW_OFFSET_FOR_LPIN( lcdpin_to_l
 // It is faster to copy a sequence of words than try to only set the nibbles that have changed.
 
 
-
-// Fills the arrays
-
-void initLCDPrecomputedWordArrays() {
-
-    // Note that we need different arrays for the minutes and seconds because , while both have all four LCD pins in the same LCDMEM word,
-    // they had to be connected in different orders just due to PCB routing constraints. Of course it would have been great to get them ordered the same
-    // way and save some RAM (or even also get all 4 of the hours pin in the same LCDMEM word) but I think we are just lucky that we could get things router so that
-    // these two updates are optimized since they account for the VAST majority of all time spent in the CPU active mode.
-
-    // Fill the seconds array
-    //fill_lcd_words( secs_lcd_words , SECS_TENS_DIGITPLACE , SECS_ONES_DIGITPLACE , 6 , 10 );
-    // Fill the minutes array
-    //fill_lcd_words( mins_lcd_words , MINS_TENS_DIGITPLACE , MINS_ONES_DIGITPLACE , 6 , 10 );
-    // Fill the array of frames for ready-to-launch-mode animation
-
-}
-
-
-
-
-
 // Show the digit x at position p
 // where p=0 is the rightmost digit
 
 template <uint8_t pos, uint8_t x>                    // Use template to force everything to compile down to an individualized, optimized function for each pos+x combination
 inline void lcd_show() {
-
-    constexpr uint8_t nibble_a_thru_d =  digit_glyphs[x].nibble_a_thru_d;         // Look up which segments on the low pin we need to turn on to draw this digit
-    constexpr uint8_t nibble_e_thru_g =  digit_glyphs[x].nibble_e_thru_g;         // Look up which segments on the low pin we need to turn on to draw this digit
-
-    constexpr uint8_t lpin_a_thru_d = digitplace_lpins_table[pos].lpin_a_thru_d;     // Look up the L-pin for the low segment bits of this digit
-    constexpr uint8_t lpin_e_thru_g = digitplace_lpins_table[pos].lpin_e_thru_g;     // Look up the L-pin for the high bits of this digit
-
-    constexpr uint8_t lcdmem_offset_a_thru_d = (lpin_t< lpin_a_thru_d >::lcdmem_offset()); // Look up the memory address for the low segment bits
-    constexpr uint8_t lcdmem_offset_e_thru_g = lpin_t< lpin_e_thru_g >::lcdmem_offset(); // Look up the memory address for the high segment bits
 
     uint8_t * const lcd_mem_reg = LCDMEM;
 
@@ -372,48 +341,9 @@ inline void lcd_show() {
 
      */
 
-    if ( lcdmem_offset_a_thru_d == lcdmem_offset_e_thru_g  ) {
+    constexpr byte digitplace = digit_positions_rj( pos );
 
-        // If the two L-pins for this digit are in the same memory location, we can update them both with a single byte write
-        // Note that the whole process that gets us here is static at compile time, so the whole lcd_show() call will compile down
-        // to just a single immediate byte write, which is very efficient.
-
-        const uint8_t lpin_a_thru_d_nibble = lpin_t< lpin_a_thru_d >::nibble();
-
-        if ( lpin_a_thru_d_nibble == nibble_t::LOWER  ) {
-
-            // the A-D segments go into the lower nibble
-            // the E-G segments go into the upper nibble
-
-            lcd_mem_reg[lcdmem_offset_a_thru_d] = (uint8_t) ( nibble_e_thru_g << 4 ) | (nibble_a_thru_d);     // Combine the nibbles, write them to the mem address
-
-        } else {
-
-            // the A-D segments go into the lower nibble
-            // the E-G segments go into the upper nibble
-
-            lcd_mem_reg[lcdmem_offset_a_thru_d] = (uint8_t) ( nibble_a_thru_d << 4 ) | (nibble_e_thru_g);     // Combine the nibbles, write them to the mem address
-
-        }
-
-    } else {
-
-        // The A-D segments are located on a pin that has a different address than the E-G segments, so we can to manually splice the nibbles into those two addresses
-
-        // Write the a_thru_d nibble to the memory address is lives in
-
-        const nibble_t lpin_a_thru_d_nibble_index = lpin_t< lpin_a_thru_d >::nibble();
-
-        set_nibble( &lcd_mem_reg[lcdmem_offset_a_thru_d] , lpin_a_thru_d_nibble_index , nibble_a_thru_d );
-
-
-        // Write the e_thru_f nibble to the memory address is lives in
-
-        const nibble_t lpin_e_thru_g_nibble_index = lpin_t< lpin_e_thru_g >::nibble();
-
-        set_nibble( &lcd_mem_reg[lcdmem_offset_e_thru_g] , lpin_e_thru_g_nibble_index , nibble_e_thru_g );
-
-    }
+    lcd_write_glyph_to_lcdmem( digitplace , digit_glyphs[x] );
 
 }
 
@@ -425,25 +355,9 @@ inline void lcd_show() {
 void lcd_show_f( const uint8_t pos, const glyph_segment_t segs ) {
 
 
-    byte * const lcd_mem_reg = (uint8_t *) LCDMEM;
+    byte digitplace = digit_positions_rj( pos );
 
-    /*
-      I know that line above looks dumb, but if you just access LCDMEM directly the compiler does the wrong thing and loads the offset
-      into a register rather than the base and this creates many wasted loads (LCDMEM=0x0620)...
-
-            00c4e2:   403F 0010           MOV.W   #0x0010,R15
-            00c4e6:   40FF 0060 0620      MOV.B   #0x0060,0x0620(R15)
-            00c4ec:   403F 000E           MOV.W   #0x000e,R15
-            00c4f0:   40FF 00F2 0620      MOV.B   #0x00f2,0x0620(R15)
-
-      If we load it into a variable first, the compiler then gets wise and uses that as the base..
-
-            00c4e2:   403F 0620           MOV.W   #0x0620,R15
-            00c4e6:   40FF 0060 0010      MOV.B   #0x0060,0x0010(R15)
-            00c4ec:   40FF 00F2 000E      MOV.B   #0x00f2,0x000e(R15)
-
-     */
-
+    lcd_write_glyph_to_lcdmem( digitplace , segs );
 
 }
 

@@ -13,7 +13,7 @@
 
 // *** LCD layout
 
-constexpr uint8_t DIGITPLACE_COUNT=12;
+
 
 // these arrays hold the pre-computed words that we will write to word in LCD memory that
 // controls the seconds and mins digits on the LCD. We keep these in RAM intentionally for power and latency savings.
@@ -26,10 +26,12 @@ constexpr uint8_t DIGITPLACE_COUNT=12;
 
 const byte READY_TO_LAUNCH_LCD_FRAME_COUNT=8;                             // How many frames in the ready-to-launch mode animation
 
-// Fills the arrays
 
-void initLCDPrecomputedWordArrays();
+void lcd_segment_set( char * lcdmem_base , lcd_segment_location_t seg  );
 
+void lcd_segment_set_to_lcdmem( lcd_segment_location_t seg  );
+
+void lcd_segment_clear_to_lcdmem( lcd_segment_location_t seg  );
 
 // General function to write a glyph onto the LCD. No constraints on how pins are connected, but inefficient.
 // Remember that means that different segments in the same digit could be at different LCDMEM locations!

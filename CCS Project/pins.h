@@ -83,7 +83,7 @@
 
 
 
-// Trigger switch pin P2.1 which is pin number 41 on MSP430. This pin uses ISR vector
+// Trigger switch pin P2.0 which is pin number 42 on MSP430. This pin uses ISR vector.
 
 #define TRIGGER_PREN   P2REN
 #define TRIGGER_PDIR   P2DIR
@@ -97,7 +97,7 @@
 
 #define TRIGGER_VECTOR_RAM ram_vector_PORT2  // The RAM vector called when this pin ticks
 
-#define TRIGGER_B (1)
+#define TRIGGER_B (0)
 
 
 
@@ -121,21 +121,71 @@
 #define DEBUGB_B (6)
 
 
-// Q1 Top flash LED
+// SOLENOIDS
 
-#define Q1_TOP_LED_PREN P4REN
-#define Q1_TOP_LED_PDIR P4DIR
-#define Q1_TOP_LED_POUT P4OUT
-#define Q1_TOP_LED_PIN  P4IN
-#define Q1_TOP_LED_B (0)       // Bit
+#define S1_PREN P7REN
+#define S1_PDIR P7DIR
+#define S1_POUT P7OUT
+#define S1_PIN  P7IN
+#define S1_B (0)       // Bit
 
-// Q2 Bottom flash LED
+#define S2_PREN P7REN
+#define S2_PDIR P7DIR
+#define S2_POUT P7OUT
+#define S2_PIN  P7IN
+#define S2_B (1)       // Bit
 
-#define Q2_BOT_LED_PREN P4REN
-#define Q2_BOT_LED_PDIR P4DIR
-#define Q2_BOT_LED_POUT P4OUT
-#define Q2_BOT_LED_PIN  P4IN
-#define Q2_BOT_LED_B (1)        // Bit
+#define S3_PREN P7REN
+#define S3_PDIR P7DIR
+#define S3_POUT P7OUT
+#define S3_PIN  P7IN
+#define S3_B (2)       // Bit
+
+#define S4_PREN P7REN
+#define S4_PDIR P7DIR
+#define S4_POUT P7OUT
+#define S4_PIN  P7IN
+#define S4_B (3)       // Bit
+
+#define S5_PREN P7REN
+#define S5_PDIR P7DIR
+#define S5_POUT P7OUT
+#define S5_PIN  P7IN
+#define S5_B (4)       // Bit
+
+#define S6_PREN P7REN
+#define S6_PDIR P7DIR
+#define S6_POUT P7OUT
+#define S6_PIN  P7IN
+#define S6_B (5)       // Bit
+
+
+// SWITCHES - Note these are on an interrupt enabled port
+
+#define SWITCH_MOVE_PREN   P1REN
+#define SWITCH_MOVE_PDIR   P1DIR
+#define SWITCH_MOVE_POUT   P1OUT
+#define SWITCH_MOVE_PIN    P1IN
+#define SWITCH_MOVE_PIE    P1IE           // Interrupt enable
+#define SWITCH_MOVE_PIV    P1IV           // Interrupt vector (read this to get which pin caused interrupt, reading clears highest pending)
+#define SWITCH_MOVE_PIFG   P1IFG          // Interrupt flag (bit 1 for each pin that interrupted)
+#define SWITCH_MOVE_PIES   P1IES          // Interrupt Edge Select (0=low-to-high 1=high-to-low)
+#define SWITCH_MOVE_VECTOR PORT1_VECTOR   // ISR vector
+#define SWITCH_MOVE_VECTOR_RAM ram_vector_PORT1  // The RAM vector called when this pin ticks
+#define SWITCH_MOVE_B (6)
+
+
+#define SWITCH_CHANGE_PREN   P1REN
+#define SWITCH_CHANGE_PDIR   P1DIR
+#define SWITCH_CHANGE_POUT   P1OUT
+#define SWITCH_CHANGE_PIN    P1IN
+#define SWITCH_CHANGE_PIE    P1IE           // Interrupt enable
+#define SWITCH_CHANGE_PIV    P1IV           // Interrupt vector (read this to get which pin caused interrupt, reading clears highest pending)
+#define SWITCH_CHANGE_PIFG   P1IFG          // Interrupt flag (bit 1 for each pin that interrupted)
+#define SWITCH_CHANGE_PIES   P1IES          // Interrupt Edge Select (0=low-to-high 1=high-to-low)
+#define SWITCH_CHANGE_VECTOR PORT1_VECTOR   // ISR vector
+#define SWITCH_CHANGE_VECTOR_RAM ram_vector_PORT1  // The RAM vector called when this pin ticks
+#define SWITCH_CHANGE_B (7)
 
 
 // TSP voltage regulator

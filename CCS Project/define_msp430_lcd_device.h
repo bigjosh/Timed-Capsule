@@ -23,6 +23,8 @@ constexpr word LCDMEMW_OFFSET_FOR_LPIN( byte lpin) {
 // This function returns a value that you can OR into the LCDMEM location to set the COM bit for the requested lcd com.
 // This mapping comes from page 445 of the MSP430FR4 family users guide
 
+// TODO: This combines normalizing the LCD's 1-based COM index with the MSP430's addressing quirks. They should be separate.
+
 constexpr byte lcd_shifted_com_bits( byte lpin , byte lcd_com ) {
 
     byte com_bitmask = 1 << (lcd_com-1);            // The lcd_com values are 1-4. The MSP430 uses a bit in position 0-4 for even LPINs and a bit in position 5-7 for odd LPINs.
@@ -36,6 +38,13 @@ constexpr byte lcd_shifted_com_bits( byte lpin , byte lcd_com ) {
         return com_bitmask;
 
     }
+}
+
+// Normalize the positions so index 0 is rightmost
+
+constexpr byte lcd_digitplace_for_normal_pos( byte pos ) {
+
+    return 5-pos;
 }
 
 
