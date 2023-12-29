@@ -89,8 +89,38 @@ We also further reduce power using the MSP430's LCD buffer hardware. We keep the
 
 If you somehow manage to interrupt the power durring countdown, the timer will resume counting at whatever time is was at when the power was removed. 
 
+## LCD bias voltage
+
+We need regulated 3.0V DC for the LCD bias voltage, but we have 3V-3.6V coming from the batteries. 
+
+The MSP430 has a built in adjustable voltage regulator. Is this more efficient than the very-efficient TPS7A30 dedicate regulators?
+
+Let's test! Here we display the specified pattern and then go into LPM4 sleep and then measure current using a Joulescope. 
+
+
+(IN PROGRESS:)
+Vcc=3.55V<br>(2xAA fresh)
+| Pattern |  |  |  
+| - | -: | -: | 
+| blank |  |  |
+| "111111" |  | 1.2uA |
+| "555555" |  | 1.0uA |
+| "888888" |  |  |
+
+
+Vcc=2.6V<br>(2xAA after many decades)
+| Pattern | Vcc=3.55V<br>(2xAA fresh) | Vcc=2.6V<br>(2xAA after many decades) |  
+| - | -: | -: | -: | -: |
+| "111111" | 1.3uA | 1.2uA |  |  |
+| Countdown mode | 1.1uA | 1.0uA |  |  |
+| Unlock |  |  | 1.2A | 1A |
+
+
+
 
 ## Build notes
+
+
 
 ## Current Usage
 
