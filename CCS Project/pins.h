@@ -10,6 +10,32 @@
 #ifndef PINS_H_
 #define PINS_H_
 
+
+// --- RV3032 RTC
+
+// RV3032 Event input pin is hardwired to ground to avoid having it float during battery changes (uses lots of power)
+
+// Power the RV3032 on pin P1.2 which is pin number 26 on MSP430
+
+#define RV3032_VCC_PREN P1REN
+#define RV3032_VCC_PDIR P1DIR
+#define RV3032_VCC_POUT P1OUT
+#define RV3032_VCC_PIN  P1IN
+
+#define RV3032_VCC_B (2)
+
+// Ground the RV3032 on pin P1.3 which is pin number 23 on MSP430
+// Having the RV30332 ground come from the MCU should give extra isolation since it runs though the MSP decoupling cap
+// and this also makes sure their grounds are close together.
+
+#define RV3032_GND_PREN P1REN
+#define RV3032_GND_PDIR P1DIR
+#define RV3032_GND_POUT P1OUT
+#define RV3032_GND_PIN  P1IN
+
+#define RV3032_GND_B (3)
+
+
 // Connected to the RV3203 INT pin which is open collector on RV3032 side
 
 #define RV3032_INT_PREN   P1REN
@@ -58,29 +84,8 @@
 #define I2C_CLK_B (0)
 
 
-// RV3032 Event input pin is hardwired to ground to avoid having it float during battery changes (uses lots of power)
 
-
-// Power the RV3032 on pin P1.2 which is pin number 26 on MSP430
-
-#define RV3032_VCC_PREN P1REN
-#define RV3032_VCC_PDIR P1DIR
-#define RV3032_VCC_POUT P1OUT
-#define RV3032_VCC_PIN  P1IN
-
-#define RV3032_VCC_B (2)
-
-// Ground the RV3032 on pin P1.3 which is pin number 23 on MSP430
-// Having the RV30332 ground come from the MCU should give extra isolation since it runs though the MSP decoupling cap
-// and this also makes sure their grounds are close together.
-
-#define RV3032_GND_PREN P1REN
-#define RV3032_GND_PDIR P1DIR
-#define RV3032_GND_POUT P1OUT
-#define RV3032_GND_PIN  P1IN
-
-#define RV3032_GND_B (3)
-
+// --- LOCKING TRIGGER SWITCH
 
 
 // Trigger switch pin P2.0 which is pin number 42 on MSP430. This pin uses ISR vector.
@@ -99,6 +104,8 @@
 
 #define TRIGGER_B (0)
 
+
+// --- DEBUG PINS
 
 
 // Debug out A on pin P1.7 which is pin number 21 on MSP430
@@ -121,7 +128,7 @@
 #define DEBUGB_B (6)
 
 
-// SOLENOIDS
+// --- SOLENOIDS
 
 #define S1_PREN P7REN
 #define S1_PDIR P7DIR
@@ -160,7 +167,7 @@
 #define S6_B (5)       // Bit
 
 
-// SWITCHES - Note these are on an interrupt enabled port
+// --- SWITCHES - Note these are on an interrupt enabled port
 
 #define SWITCH_MOVE_PREN   P1REN
 #define SWITCH_MOVE_PDIR   P1DIR
@@ -171,9 +178,7 @@
 #define SWITCH_MOVE_PIFG   P1IFG          // Interrupt flag (bit 1 for each pin that interrupted)
 #define SWITCH_MOVE_PIES   P1IES          // Interrupt Edge Select (0=low-to-high 1=high-to-low)
 #define SWITCH_MOVE_VECTOR PORT1_VECTOR   // ISR vector
-#define SWITCH_MOVE_VECTOR_RAM ram_vector_PORT1  // The RAM vector called when this pin ticks
 #define SWITCH_MOVE_B (7)
-
 
 #define SWITCH_CHANGE_PREN   P1REN
 #define SWITCH_CHANGE_PDIR   P1DIR
@@ -184,11 +189,10 @@
 #define SWITCH_CHANGE_PIFG   P1IFG          // Interrupt flag (bit 1 for each pin that interrupted)
 #define SWITCH_CHANGE_PIES   P1IES          // Interrupt Edge Select (0=low-to-high 1=high-to-low)
 #define SWITCH_CHANGE_VECTOR PORT1_VECTOR   // ISR vector
-#define SWITCH_CHANGE_VECTOR_RAM ram_vector_PORT1  // The RAM vector called when this pin ticks
 #define SWITCH_CHANGE_B (6)
 
 
-// TSP voltage regulator
+// --- TSP voltage regulator
 
 #define TSP_ENABLE_PREN P8REN
 #define TSP_ENABLE_PDIR P8DIR
@@ -201,8 +205,6 @@
 #define TSP_IN_POUT P4OUT
 #define TSP_IN_PIN  P4IN
 #define TSP_IN_B (2)       // Bit
-
-
 
 
 #endif /* PINS_H_ */

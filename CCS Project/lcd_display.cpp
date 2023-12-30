@@ -30,6 +30,7 @@
 #include "lcd_display_exp.h"
 
 
+
 void lcd_segment_set( char * lcdmem_base , lcd_segment_location_t seg  ) {
 
     byte lpin = lcdpin_to_lpin[ seg.lcd_pin ];
@@ -103,6 +104,15 @@ void lcd_write_blank_to_lcdmem( byte digitplace ) {
     lcd_segment_clear_to_lcdmem(digit_segments.SEG_F);
     lcd_segment_clear_to_lcdmem(digit_segments.SEG_G);
 
+}
+
+// Do a hardware clear of the LCD memory
+// Note this does block until the hardware indicates that the clear is complete.
+// TODO: Check how long this takes.
+
+void lcd_cls() {
+    LCDMEMCTL |= LCDCLRM;                                      // Clear LCD memory
+    while ( LCDMEMCTL & LCDCLRM );                             // Wait for clear to complete.
 }
 
 // Thanks chatGPT for this function! :)

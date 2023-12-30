@@ -46,6 +46,12 @@
 #define DEBUG_PULSE_OFF()    {}
 
 
+// If this is defined, the LCD will use an optional TPS7A voltage regulator attached to the bias pin.
+// If it is not defined, the we will configure the LCD to use the internal voltage reference.
+// Using the TPS7A reduces LCD total power significantly (about 40%), at the cost of an extra part.
+// Note that if a TPS7A is connected to pin 33 and the internal reference is enabled, it will waste lots of power even if the TPS7A is not enabled.
+#define USE_TPS7A_LCD_BIAS
+
 
 // Put the LCD into blinking mode
 
@@ -113,7 +119,7 @@ inline void initGPIO() {
     P1OUT = 0x00;P2OUT = 0x00;P3OUT = 0x00;P4OUT = 0x00;
     P5OUT = 0x00;P6OUT = 0x00;P7OUT = 0x00;P8OUT = 0x00;
 
-    // --- Flash bulbs off
+    // --- Solenoid MOSFETs off
 
     // Set Solenoid transistor pins to output (will be driven low by default, so off)
     SBI( S1_PDIR , S1_B );
@@ -123,17 +129,24 @@ inline void initGPIO() {
     SBI( S5_PDIR , S5_B );
     SBI( S6_PDIR , S6_B );
 
-
+    // --- Optional TPS7A regulator external bias voltage source
 
     // TODO: Test power savings from regulator to see if it is worth the extra part.
 
-    // --- TSP7A LCD voltage regulator
-    SBI( TSP_IN_POUT , TSP_IN_B );          // Power up TSP
-    SBI( TSP_IN_PDIR , TSP_IN_B );
+    // Make the pins output. They will stay low if the TPS7A is not configured.
+    // There is other code in initLCD that will turn on the internal bias generator if USE_TPS7A_LCD_BIAS is not defined.
 
-    SBI( TSP_ENABLE_POUT , TSP_ENABLE_B );  // Enable TSP
-    SBI( TSP_ENABLE_PDIR , TSP_ENABLE_B );
+    // Set all the pins to the TPS7A to out
+    // This will ground them if the TPS7A is not enabled so they do not float.
+    SBI( TSP_IN_PDIR , TSP_IN_B );          // Power in pin
+    SBI( TSP_ENABLE_PDIR , TSP_ENABLE_B );  // Enable pin
 
+    #ifdef USE_TPS7A_LCD_BIAS
+
+        SBI( TSP_IN_POUT , TSP_IN_B );          // Power up TPS7A
+        SBI( TSP_ENABLE_POUT , TSP_ENABLE_B );  // Enable TSP
+
+    #endif
 
     // --- Debug pins
 
@@ -146,8 +159,8 @@ inline void initGPIO() {
 
     // --- RV3032
 
-    // ~INT in from RV3032 as INPUT with PULLUP
-    // We don't use this for now, so set to drive low.
+    // ~INT in from RV3032 is an open collector output.
+    // We don't use this for now, so set to drive low to avoid any power leakage.
 
     SBI( RV3032_INT_PDIR , RV3032_INT_B ); // OUTPUT, default low
 
@@ -183,19 +196,22 @@ inline void initGPIO() {
 
     CBI( TRIGGER_POUT , TRIGGER_B );      // low
     SBI( TRIGGER_PDIR , TRIGGER_B );      // drive
+    SBI( SWITCH_CHANGE_PIES , TRIGGER_B );      // Interrupt on high-to-low transition (pin pulled up, switch connects to ground)
 
-    // --- Switches
-
+    // --- Buttons
 
     // By default we set the switches to drive low so it will not use power in case the button is stuck or shorted
     // We will switch it to pull-up later if we need to (because we have not launched yet).
 
-    CBI( SWITCH_MOVE_POUT , TRIGGER_B );      // low
-    SBI( SWITCH_MOVE_PDIR , TRIGGER_B );      // drive
+    CBI( SWITCH_MOVE_POUT , SWITCH_MOVE_B );      // low
+    SBI( SWITCH_MOVE_PDIR , SWITCH_MOVE_B );      // drive
+    SBI( SWITCH_MOVE_PREN , SWITCH_MOVE_B );      // Set pull mode to UP (no effect when pin is in OUTPUT mode)
+    SBI( SWITCH_MOVE_PIES , SWITCH_MOVE_B );      // Interrupt on high-to-low transition (pin pulled up, button connects to ground)
 
-    CBI( SWITCH_CHANGE_POUT , TRIGGER_B );      // low
-    SBI( SWITCH_CHANGE_PDIR , TRIGGER_B );      // drive
-
+    CBI( SWITCH_CHANGE_POUT , SWITCH_CHANGE_B );      // low
+    SBI( SWITCH_CHANGE_PDIR , SWITCH_CHANGE_B );      // drive
+    SBI( SWITCH_CHANGE_PREN , SWITCH_CHANGE_B );      // Set pull mode to UP (no effect when pin is in OUTPUT mode)
+    SBI( SWITCH_CHANGE_PIES , SWITCH_CHANGE_B );      // Interrupt on high-to-low transition (pin pulled up, button connects to ground)
 
     // Note that we do not enable the trigger pin interrupt here. It will get enabled when we
     // switch to ready-to-lanch mode when the trigger is inserted at the factory. The interrupt will then get
@@ -286,8 +302,6 @@ void initLCD() {
     //LCDVCTL = LCDCPEN | (LCDCPFSEL0 | LCDCPFSEL1 | LCDCPFSEL2 | LCDCPFSEL3);
 
 
-    // LCD Operation - Mode 3, internal 2.96v, charge pump 256Hz, voltage reference only on 1/256th of the time. ~4.2uA from 3.5V Vcc
-    // LCDVCTL = LCDCPEN | LCDREFEN | VLCD_6 | (LCDCPFSEL0 | LCDCPFSEL1 | LCDCPFSEL2 | LCDCPFSEL3) | LCDREFMODE;
 
     // LCD Operation - Mode 3, internal 3.02v, charge pump 256Hz, voltage reference only on 1/256th of the time. ~4.2uA from 3.5V Vcc
     //LCDVCTL = LCDCPEN | LCDREFEN | VLCD_7 | (LCDCPFSEL0 | LCDCPFSEL1 | LCDCPFSEL2 | LCDCPFSEL3) | LCDREFMODE;
@@ -310,15 +324,28 @@ void initLCD() {
 
 
     // LCD Operation - Charge pump enable, Vlcd=Vcc , charge pump FREQ=/256Hz (lowest)  2.5uA - Good for testing without a regulator
-    LCDVCTL = LCDCPEN |  LCDSELVDD | (LCDCPFSEL0 | LCDCPFSEL1 | LCDCPFSEL2 | LCDCPFSEL3);
+    //LCDVCTL = LCDCPEN |  LCDSELVDD | (LCDCPFSEL0 | LCDCPFSEL1 | LCDCPFSEL2 | LCDCPFSEL3);
 
-    /* WINNER for controlled Vlcd - Uses external TSP7A0228 regulator for Vlcd on R33 */
-    // LCD Operation - Charge pump enable, Vlcd=external from R33 pin , charge pump FREQ=/256Hz (lowest). 2.1uA/180uA  @ Vcc=3.5V . Vlcd=2.8V  from TPS7A0228 no blinking.
-    //LCDVCTL = LCDCPEN |   (LCDCPFSEL0 | LCDCPFSEL1 | LCDCPFSEL2 | LCDCPFSEL3);
 
 
     // LCD Operation - Charge pump enable, Vlcd=external from R33 pin , charge pump FREQ=/64Hz . 2.1uA/180uA  @ Vcc=3.5V . Vlcd=2.8V  from TPS7A0228 no blinking.
     //LCDVCTL = LCDCPEN |   (LCDCPFSEL0 | LCDCPFSEL1 );
+
+
+
+    #ifdef USE_TPS7A_LCD_BIAS
+
+        /* WINNER for controlled Vlcd - Uses external TSP7A regulator for Vlcd on R33 */
+        // LCD Operation - Charge pump enable, Vlcd=external from R33 pin , charge pump FREQ=/256Hz (lowest). 2.1uA/180uA  @ Vcc=3.5V . Vlcd from TPS7A0228 no blinking.
+        LCDVCTL = LCDCPEN |   (LCDCPFSEL0 | LCDCPFSEL1 | LCDCPFSEL2 | LCDCPFSEL3);
+
+    #else
+
+        // LCD Operation - Mode 3, internal 2.96v, charge pump 256Hz, voltage reference only on 1/256th of the time. ~4.2uA from 3.5V Vcc
+        LCDVCTL = LCDCPEN | LCDREFEN | VLCD_6 | (LCDCPFSEL0 | LCDCPFSEL1 | LCDCPFSEL2 | LCDCPFSEL3) | LCDREFMODE;
+
+
+    #endif
 
 
     LCDMEMCTL |= LCDCLRM;                                      // Clear LCD memory
@@ -1221,6 +1248,11 @@ unsigned int countdown_tripple_secs_backup_value;
 unsigned int countdown_days_backup_value;
 
 
+// Incremented each time we boot just to keep track of battery changes.
+#pragma NOINIT
+unsigned int reset_counter_value=0;
+
+
 void setting_mode() {
 
     enum units_t {
@@ -1248,10 +1280,10 @@ void setting_mode() {
 
 }
 
-unsigned int h=0,m=0;s=0;
+unsigned int h=0,m=0,s=0;
 
 
-#pragma vector=RV3032_CLKOUT_VECTOR
+//#pragma vector=RV3032_CLKOUT_VECTOR
 __interrupt void clkout_isr(void) {
 
     s++;
@@ -1265,7 +1297,7 @@ __interrupt void clkout_isr(void) {
 
             h++;
 
-            if (h=24) {
+            if (h==24) {
                 h=0;
             }
 
@@ -1282,6 +1314,214 @@ __interrupt void clkout_isr(void) {
     RV3032_CLKOUT_PIV;
 
 }
+
+
+// When the switch bit here is 1, then button is up and we will interrupt high-to-low,
+// and we will register a press.
+
+
+// Cases:
+// Switch is armed and goes down and is still down after debounce - interrupt to up
+// Switch is armed and goes down and is not still down afer debounce - do nothing, we will get another press when it goes down again.
+
+// Switch is not armed and goes down - ignore
+//
+
+unsigned switch_armed_flags;
+
+void enable_button_interrupts() {
+
+    // Disable pin drive
+
+    CBI( SWITCH_MOVE_PDIR , SWITCH_MOVE_B );
+    CBI( SWITCH_CHANGE_PDIR , SWITCH_CHANGE_B );
+
+    // Pull-up pins
+    // Note that we set the pull mode to UP in initGPIO
+    // and setting out to 1 when PDIR is clear will enable the pull-up
+
+    SBI( SWITCH_CHANGE_POUT , SWITCH_CHANGE_B );
+    SBI( SWITCH_MOVE_POUT , SWITCH_MOVE_B );
+
+    // We do not need to wait for the resistors to take effect since we initially will only interrupt
+    // on high to low transitions and the pulls will cause a low to high.
+
+
+    // Initially Interrupt on the next high-to-low transitions
+    SBI( SWITCH_CHANGE_PIES , SWITCH_CHANGE_B );
+    SBI( SWITCH_MOVE_PIES , SWITCH_MOVE_B );
+
+    // Clear any pending interrupts
+    CBI( SWITCH_CHANGE_PIFG , SWITCH_CHANGE_B    );
+    CBI( SWITCH_MOVE_PIFG , SWITCH_MOVE_B    );
+
+    // Arm the buttons so we register the next press
+    SBI( switch_armed_flags , SWITCH_CHANGE_B);
+    SBI( switch_armed_flags , SWITCH_MOVE_B);
+
+    // Enable pin change interrupt on the pins
+    SBI( SWITCH_CHANGE_PIE , SWITCH_CHANGE_B );
+    SBI( SWITCH_MOVE_PIE , SWITCH_MOVE_B );
+
+}
+
+
+
+
+#if (SWITCH_CHANGE_VECTOR != SWITCH_MOVE_VECTOR)
+    #error "This code assumes that both buttons are on the same interrupt vector"
+#endif
+
+
+
+// Handle interrupt for any switch (buttons and locking trigger)
+
+#pragma vector=SWITCH_CHANGE_VECTOR
+__interrupt void button_isr(void) {
+
+    // Capture which flags are set (remember that this one register has the bit for all switches as confirmed above)
+    // We capture a snapshot here so we do not miss any updates, but also so we can clear any changes that happen
+    // from switch bounce below.
+
+    unsigned capture_interrupt_flags = SWITCH_CHANGE_PIFG;
+
+    // If this pin interrupted, and it is armed, then register a press
+
+    if ( TBI( capture_interrupt_flags , SWITCH_CHANGE_B ) && TBI( switch_armed_flags , SWITCH_CHANGE_B )  ) {
+
+        // Button armed and pressed
+
+        s++;
+        if (s==100) {
+            s=0;
+        }
+
+        *secs_lcdmemw = secs_lcd_words[s];
+
+
+    }
+
+
+    // Update minutes on every call so we can see if there are spurious ints happening
+
+    m++;
+    if (m==100) {
+        m=0;
+    }
+
+    *mins_lcdmemw = mins_lcd_words[m];
+
+
+    if ( TBI( capture_interrupt_flags , SWITCH_MOVE_B ) && TBI( switch_armed_flags , SWITCH_MOVE_B )  ) {
+
+        h++;
+        if (h==100) {
+            h=0;
+        }
+
+        *hours_lcdmemw = hours_lcd_words[h];
+
+    }
+
+
+
+    // Ok this part is tricky. We need to be able to debounce the switches but we can only get interrupts
+    // in one direction at a time. So our strategy is to wait for 50ms after any change to give the bouncing time
+    // to settle down, and then we look at the current state of the pins and set the interrupt direction so we
+    // will interrupt on the next transition in either direction.
+
+    // Delay 50ms for debouncing (We are running at 1MHz)
+    __delay_cycles( 50000 );
+
+
+    // Cupture current state of the switches
+    unsigned current_switch_state = SWITCH_CHANGE_PIN;
+
+    if ( TBI( capture_interrupt_flags , SWITCH_CHANGE_B) ) {
+
+        // Something changed this interrupt
+
+        if (!TBI( current_switch_state , SWITCH_CHANGE_B ) ) {
+
+            // The button is currently down after the debounce period
+
+            CBI( SWITCH_CHANGE_PIES , SWITCH_CHANGE_B );        // Now interrupt on low-to-high so we will wake when button is released.
+
+            CBI( switch_armed_flags , SWITCH_CHANGE_B );        // And disarm.
+
+        } else {
+
+            // If the button is up after the debbounce period, then
+            // it shoudl be armed and we want to inetrrupt next time it is pressed
+
+            SBI( SWITCH_CHANGE_PIES , SWITCH_CHANGE_B );        // Now interrupt on low-to-high so we will wake when button is released.
+
+            SBI( switch_armed_flags , SWITCH_CHANGE_B );        // And disarm.
+        }
+
+        // Ack the interrupt
+
+        CBI( SWITCH_CHANGE_PIFG , SWITCH_CHANGE_B );
+
+    }
+
+    if ( TBI( capture_interrupt_flags , SWITCH_MOVE_B) ) {
+
+        // Something changed this interrupt
+
+        if (!TBI( current_switch_state , SWITCH_MOVE_B ) ) {
+
+            // The button is currently down after the debounce period
+
+            CBI( SWITCH_CHANGE_PIES , SWITCH_MOVE_B );        // Now interrupt on low-to-high so we will wake when button is released.
+
+            CBI( switch_armed_flags , SWITCH_MOVE_B );        // And disarm.
+
+        } else {
+
+            // If the button is up after the debbounce period, then
+            // it shoudl be armed and we want to inetrrupt next time it is pressed
+
+            SBI( SWITCH_CHANGE_PIES , SWITCH_MOVE_B );        // Now interrupt on low-to-high so we will wake when button is released.
+
+            SBI( switch_armed_flags , SWITCH_MOVE_B );        // And disarm.
+        }
+
+        // Ack the interrupt
+
+        CBI( SWITCH_CHANGE_PIFG , SWITCH_MOVE_B );
+
+    }
+
+
+
+}
+
+
+
+void disable_buttons() {
+
+    // Disable pin change interrupt on the pins
+    // Do this first so we dont get any spurious ints when we drive them low.
+
+    CBI( SWITCH_CHANGE_PIE , SWITCH_CHANGE_B );
+    CBI( SWITCH_MOVE_PIE , SWITCH_MOVE_B );
+
+
+    // Disable pull-ups
+    // NOte it is import to do this before setting PDIR or else if the button happens to be
+    // pressed then it could short a hi drive to ground
+
+    CBI( SWITCH_CHANGE_POUT , SWITCH_CHANGE_B );
+    CBI( SWITCH_MOVE_POUT , SWITCH_MOVE_B );
+
+    // Drive pins low to avoid floating.
+
+    SBI( SWITCH_MOVE_PDIR , TRIGGER_B );      // drive
+    SBI( SWITCH_CHANGE_PDIR , TRIGGER_B );      // drive
+
+}
+
 
 void locked_mode() {
 
@@ -1319,9 +1559,76 @@ enum mode_t {
  * value when the code is loaded, but are never again initialized.
  */
 
-#pragma #pragma PERSISTENT(mode)
+//#pragma #pragma PERSISTENT
 mode_t mode;
 
+
+void regulatorTest() {
+
+    // SHOW SOMETHING
+
+
+    *secs_lcdmemw = secs_lcd_words[56];
+    *mins_lcdmemw = mins_lcd_words[34];
+    *hours_lcdmemw = hours_lcd_words[12];
+
+
+    //lcd_cls();
+
+    // SLEEP
+    __bis_SR_register(LPM4_bits );                // Enter LPM4, never wake up
+    __no_operation();                                   // For debugger
+
+
+    // We should never get here. Indicate error.
+    *secs_lcdmemw = secs_lcd_words[44];
+    *mins_lcdmemw = mins_lcd_words[55];
+    *hours_lcdmemw = hours_lcd_words[66];
+
+    while (1);
+
+
+}
+
+// Proof of life test just oscillates the easy-to-reach MOVE switch pin between 0 and Vcc at 0.5Hz
+// It is the upper right pin of the button.
+
+void test_twiddle_move_switch_pin() {
+    while (1) {
+
+        __delay_cycles(1000000);
+
+        SBI( SWITCH_MOVE_POUT , SWITCH_MOVE_B );
+
+        __delay_cycles(1000000);
+
+        CBI( SWITCH_MOVE_POUT , SWITCH_MOVE_B );
+
+
+    }
+
+}
+
+// Just count up the numbers 0-99 on all 3 pairs of digits
+
+void lcd_test() {
+
+
+    while (1) {
+
+        for( byte i=0; i<100;i++) {
+
+            *secs_lcdmemw = secs_lcd_words[i];
+            *mins_lcdmemw = mins_lcd_words[i];
+            *hours_lcdmemw = hours_lcd_words[i];
+
+            __delay_cycles(500000);    // 0.5 sec +/-10% (we are running at 1Mhz)
+
+
+        }
+
+    }
+}
 
 int main( void )
 {
@@ -1341,13 +1648,28 @@ int main( void )
     // Init LCD next so we can talk
     initLCD();
 
+
     // Power up display with a nice dash pattern
     lcd_show_dashes();
+
+    //#warning stop here for now
+    //while (1);
 
     // Initialize the RV3032 with proper clkout & backup settings.
     rv3032_init();
 
-#warning testing only
+
+    enable_button_interrupts();
+    __bis_SR_register(LPM4_bits | GIE );                // Enter LPM4
+    __no_operation();                                   // For debugger
+
+
+    //lcd_test();
+    regulatorTest();
+
+
+
+    #warning testing only
     locked_mode();
 
     // Start normal operation!

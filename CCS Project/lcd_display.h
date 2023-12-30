@@ -108,5 +108,12 @@ void lcd_show_centesimus_dies_message();
 // Fill the screen with 0's
 void lcd_show_zeros();
 
+// Do a hardware clear of the LCD memory
+// Note this does block until the hardware indicates that the clear is complete.
+// TODO: Check how long this takes.
+
+void lcd_cls();
+
+
 
 #endif /* LCD_DISPLAY_H_ */
