@@ -190,11 +190,11 @@
 
 // TSP voltage regulator
 
-#define TSP_ENABLE_PREN P7REN
-#define TSP_ENABLE_PDIR P7DIR
-#define TSP_ENABLE_POUT P7OUT
-#define TSP_ENABLE_PIN  P7IN
-#define TSP_ENABLE_B (0)       // Bit
+#define TSP_ENABLE_PREN P8REN
+#define TSP_ENABLE_PDIR P8DIR
+#define TSP_ENABLE_POUT P8OUT
+#define TSP_ENABLE_PIN  P8IN
+#define TSP_ENABLE_B (3)       // Bit
 
 #define TSP_IN_PREN P4REN
 #define TSP_IN_PDIR P4DIR
