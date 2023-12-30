@@ -172,7 +172,7 @@
 #define SWITCH_MOVE_PIES   P1IES          // Interrupt Edge Select (0=low-to-high 1=high-to-low)
 #define SWITCH_MOVE_VECTOR PORT1_VECTOR   // ISR vector
 #define SWITCH_MOVE_VECTOR_RAM ram_vector_PORT1  // The RAM vector called when this pin ticks
-#define SWITCH_MOVE_B (6)
+#define SWITCH_MOVE_B (7)
 
 
 #define SWITCH_CHANGE_PREN   P1REN
@@ -185,7 +185,7 @@
 #define SWITCH_CHANGE_PIES   P1IES          // Interrupt Edge Select (0=low-to-high 1=high-to-low)
 #define SWITCH_CHANGE_VECTOR PORT1_VECTOR   // ISR vector
 #define SWITCH_CHANGE_VECTOR_RAM ram_vector_PORT1  // The RAM vector called when this pin ticks
-#define SWITCH_CHANGE_B (7)
+#define SWITCH_CHANGE_B (6)
 
 
 // TSP voltage regulator
