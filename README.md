@@ -89,8 +89,53 @@ We also further reduce power using the MSP430's LCD buffer hardware. We keep the
 
 If you somehow manage to interrupt the power durring countdown, the timer will resume counting at whatever time is was at when the power was removed. 
 
+## LCD bias voltage
+
+We need regulated 3.0V DC for the LCD bias voltage, but we have 3V-3.6V coming from the batteries. 
+
+The MSP430 has a built in adjustable voltage regulator. Is this more efficient than the very-efficient TPS7A30 dedicate regulators?
+
+Let's test! Here we display the specified pattern and then go into LPM4 sleep and then measure current using a Joulescope. 
+
+(IN PROGRESS:)
+Vcc=3.55V<br>(2xAA fresh)
+| Pattern | TPS7A30 |  Internal 2.96V  |  Internal 3.08V |
+| - | -: | -: |   -: | 
+| blank    | 0.85uA | 1.10uA | 1.12uA |
+| "111111" | 1.01uA | 1.65uA |  |
+| "555555" | 1.31uA | 2.36uA |  |
+| "888888" | 1.19uA | 2.05uA | 2.12uA |
+
+Ok, since we will spend most of our lifetime around 3.55V, it is clear that the TPS7A is worth it!
+
+Interesting that the 1uF capacitor on the basis pin can maintain the display for several seconds after disconnected from the regulator. 
+
+
+Let's just make sure there are no surpises when we least want them - when the battery is reaching the end of its life...
+
+Vcc=2.6V<br>(2xAA after many decades)
+| Pattern | TPS7A30 |  Internal 2.96V  |
+| - | -: | -: |
+| "555555" | 1.03uA |  | 
+| "888888" | 1.00uA | 2.02uA | 
+
+Good enough. Note that since the TPS7A is only a regulator and not a carge pump that once the Vcc drops below 3V that the LCD will start to 
+get dimmer (actually you will just need to look at it from a lower angle to see the same contract level). I see this as a feature for this
+application since once we get below 3V I want to user to get some feedback that the batteries are getting low, but for other applications or
+if you are using alkaline batteries then you might want to switch to the internal charge pump below 3V. 
+
+And just for fun, let's see how much power we could save if we did not need a regulated voltage soruce at all...
+
+Vcc=3.0V
+| Pattern | Direct Vcc |
+| - | -: 
+| "555555" | 1.25uA | 
+
+... so, wow, the TPS7A is really efficient in this application.
 
 ## Build notes
+
+
 
 ## Current Usage
 
