@@ -51,20 +51,21 @@
 
 
 // Connected to the RV3203 CLKOUT pin
+// This is the source of the vast, vast, vast majority of all of our wakes
+// durring product lifetime, so it is on a dedicated interrupt vector
+// so the ISR does not need to check the source/
 
-#define RV3032_CLKOUT_PREN   P1REN
-#define RV3032_CLKOUT_PDIR   P1DIR
-#define RV3032_CLKOUT_POUT   P1OUT
-#define RV3032_CLKOUT_PIN    P1IN
-#define RV3032_CLKOUT_PIE    P1IE          // Interrupt enable
-#define RV3032_CLKOUT_PIV    P1IV          // Interrupt vector (read this to get which pin caused interrupt, reading clears highest pending)
-#define RV3032_CLKOUT_PIFG   P1IFG         // Interrupt flag (bit 1 for each pin that interrupted)
-#define RV3032_CLKOUT_PIES   P1IES         // Interrupt Edge Select (0=low-to-high 1=high-to-low)
-#define RV3032_CLKOUT_VECTOR PORT1_VECTOR  // ISR vector
+#define RV3032_CLKOUT_PREN   P2REN
+#define RV3032_CLKOUT_PDIR   P2DIR
+#define RV3032_CLKOUT_POUT   P2OUT
+#define RV3032_CLKOUT_PIN    P2IN
+#define RV3032_CLKOUT_PIE    P2IE          // Interrupt enable
+#define RV3032_CLKOUT_PIV    P2IV          // Interrupt vector (read this to get which pin caused interrupt, reading clears highest pending)
+#define RV3032_CLKOUT_PIFG   P2IFG         // Interrupt flag (bit 1 for each pin that interrupted)
+#define RV3032_CLKOUT_PIES   P2IES         // Interrupt Edge Select (0=low-to-high 1=high-to-low)
+#define RV3032_CLKOUT_VECTOR PORT2_VECTOR  // ISR vector
 
-#define RV3032_CLKOUT_VECTOR_RAM ram_vector_PORT1  // The RAM vector called when this pin ticks
-
-#define RV3032_CLKOUT_B (1)       // Bit
+#define RV3032_CLKOUT_B (0)       // Bit
 
 // I2C data connection to RV3032 on pin P1.5 which is pin number 23 on MSP430
 
@@ -83,26 +84,6 @@
 
 #define I2C_CLK_B (0)
 
-
-
-// --- LOCKING TRIGGER SWITCH
-
-
-// Trigger switch pin P2.0 which is pin number 42 on MSP430. This pin uses ISR vector.
-
-#define TRIGGER_PREN   P2REN
-#define TRIGGER_PDIR   P2DIR
-#define TRIGGER_POUT   P2OUT
-#define TRIGGER_PIN    P2IN
-#define TRIGGER_PIE    P2IE           // Interrupt enable
-#define TRIGGER_PIV    P2IV           // Interrupt vector (read this to get which pin caused interrupt, reading clears highest pending)
-#define TRIGGER_PIFG   P2IFG          // Interrupt flag (bit 1 for each pin that interrupted)
-#define TRIGGER_PIES   P2IES          // Interrupt Edge Select (0=low-to-high 1=high-to-low)
-#define TRIGGER_VECTOR PORT2_VECTOR   // ISR vector
-
-#define TRIGGER_VECTOR_RAM ram_vector_PORT2  // The RAM vector called when this pin ticks
-
-#define TRIGGER_B (0)
 
 
 // --- DEBUG PINS
@@ -190,6 +171,20 @@
 #define SWITCH_CHANGE_PIES   P1IES          // Interrupt Edge Select (0=low-to-high 1=high-to-low)
 #define SWITCH_CHANGE_VECTOR PORT1_VECTOR   // ISR vector
 #define SWITCH_CHANGE_B (6)
+
+// --- LOCKING TRIGGER SWITCH
+
+#define TRIGGER_PREN   P1REN
+#define TRIGGER_PDIR   P1DIR
+#define TRIGGER_POUT   P1OUT
+#define TRIGGER_PIN    P1IN
+#define TRIGGER_PIE    P1IE           // Interrupt enable
+#define TRIGGER_PIV    P1IV           // Interrupt vector (read this to get which pin caused interrupt, reading clears highest pending)
+#define TRIGGER_PIFG   P1IFG          // Interrupt flag (bit 1 for each pin that interrupted)
+#define TRIGGER_PIES   P1IES          // Interrupt Edge Select (0=low-to-high 1=high-to-low)
+#define TRIGGER_VECTOR PORT1_VECTOR   // ISR vector
+
+#define TRIGGER_B (1)
 
 
 // --- TSP voltage regulator
