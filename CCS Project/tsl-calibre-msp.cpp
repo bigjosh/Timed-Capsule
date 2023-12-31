@@ -233,6 +233,9 @@ void initLCD() {
     // Configure LCD pins
     SYSCFG2 |= LCDPCTL;                                 // LCD R13/R23/R33/LCDCAP0/LCDCAP1 pins enabled
 
+    LCDBLKCTL = 0x00;           // "Settings for LCDMXx and LCDBLKPREx should only be changed while LCDBLKMODx = 00."
+                                // And note that this register is NOT cleared on reset, so we clear it here.
+
     // Enable LCD pins as defined in the LCD connections header
     // Iterate though each of the define LPINs
 
@@ -351,6 +354,9 @@ void initLCD() {
     LCDMEMCTL |= LCDCLRM;                                      // Clear LCD memory
     while ( LCDMEMCTL & LCDCLRM );                             // Wait for clear to complete.
 
+    LCDMEMCTL |= LCDCLRBM;                                     // Clear LCD blink memory
+    while ( LCDMEMCTL & LCDCLRBM );                            // Wait for clear to complete.
+
     // Configure COMs and SEGs
 
 
@@ -371,7 +377,21 @@ void initLCD() {
     LCDM4 =  0b00100001;  // L09=MSP_COM1  L08=MSP_COM0
     LCDM5 =  0b10000100;  // L10=MSP_COM3  L11=MSP_COM2
 
-    LCDBLKCTL = 0x00;       // Disable blinking. We do this because this bit is not cleared on reset so if we are resetting out of at blinking mode then it would otherwise persist.
+
+    LCDBLKCTL =
+            LCDBLKPRE__8 |            // Blinking frequency prescaller. This controls how fast the blink is.
+            LCDBLKMOD_1                 // Individual control of blinking segments from LCDBM
+    ;
+
+
+/*
+
+    LCDBLKCTL =
+            LCDBLKPRE__4 |            // Blinking frequency prescaller. This controls how fast the blink is.
+            LCDBLKMOD_2               // Blink all segments
+    ;
+
+*/
 
     LCDCTL0 |= LCDON;                                           // Turn on LCD
 
@@ -1398,6 +1418,11 @@ __interrupt void button_isr(void) {
 
         *secs_lcdmemw = secs_lcd_words[s];
 
+        // Make digitplace 0 not blink
+        lcd_write_blank_to_lcdbm( 0 );
+
+        // Make digitplace 5 blink
+        lcd_write_glyph_to_lcdbm( 5 , glyph_8 );
 
     }
 
@@ -1420,6 +1445,13 @@ __interrupt void button_isr(void) {
         }
 
         *hours_lcdmemw = hours_lcd_words[h];
+
+        // Make digitplace 5 not blink
+        lcd_write_blank_to_lcdbm( 5 );
+
+        // Make digitplace 0 blink
+        lcd_write_glyph_to_lcdbm( 0 , glyph_8 );
+
 
     }
 

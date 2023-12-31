@@ -46,13 +46,61 @@ void lcd_segment_set_to_lcdmem( lcd_segment_location_t seg  ) {
 
 }
 
-void lcd_segment_clear_to_lcdmem( lcd_segment_location_t seg  ) {
+void lcd_segment_clear( char * lcdmem_base , lcd_segment_location_t seg  ) {
 
     byte lpin = lcdpin_to_lpin[ seg.lcd_pin ];
 
-    LCDMEM[ LCDMEM_OFFSET_FOR_LPIN( lpin ) ] &= ~lcd_shifted_com_bits( lpin , seg.lcd_com );
+    lcdmem_base[ LCDMEM_OFFSET_FOR_LPIN( lpin ) ] &= ~lcd_shifted_com_bits( lpin , seg.lcd_com );
 
 }
+
+void lcd_segment_clear_to_lcdmem( lcd_segment_location_t seg  ) {
+
+    lcd_segment_clear( LCDMEM, seg );
+
+}
+
+
+// General function to write a glyph onto memory. That could be main LCDMEM or "blinking" LCDBM
+// which can also be used for double buffering.
+// No constraints on how pins are connected, but inefficient.
+// Remember that means that different segments in the same digit could be at different LCDMEM locations!
+
+
+void lcd_write_glyph_to_lcdmem( char *lcdmem_base , byte digitplace, glyph_segment_t glyph ) {
+
+    lcd_digit_segments_t digit_segments = lcd_digit_segments[ digitplace ];
+
+    if ( glyph & SEG_A_BIT ) {
+        lcd_segment_set( lcdmem_base , digit_segments.SEG_A);
+    }
+
+    if ( glyph & SEG_B_BIT ) {
+        lcd_segment_set( lcdmem_base , digit_segments.SEG_B);
+    }
+
+    if ( glyph & SEG_C_BIT ) {
+        lcd_segment_set( lcdmem_base , digit_segments.SEG_C);
+    }
+
+    if ( glyph & SEG_D_BIT ) {
+        lcd_segment_set( lcdmem_base , digit_segments.SEG_D);
+    }
+
+    if ( glyph & SEG_E_BIT ) {
+        lcd_segment_set( lcdmem_base , digit_segments.SEG_E);
+    }
+
+    if ( glyph & SEG_F_BIT ) {
+        lcd_segment_set( lcdmem_base , digit_segments.SEG_F);
+    }
+
+    if ( glyph & SEG_G_BIT ) {
+        lcd_segment_set( lcdmem_base , digit_segments.SEG_G);
+    }
+
+}
+
 
 
 // General function to write a glyph onto the LCD. No constraints on how pins are connected, but inefficient.
@@ -60,51 +108,48 @@ void lcd_segment_clear_to_lcdmem( lcd_segment_location_t seg  ) {
 
 void lcd_write_glyph_to_lcdmem( byte digitplace, glyph_segment_t glyph ) {
 
-    lcd_digit_segments_t digit_segments = lcd_digit_segments[ digitplace ];
-
-    if ( glyph & SEG_A_BIT ) {
-        lcd_segment_set_to_lcdmem(digit_segments.SEG_A);
-    }
-
-    if ( glyph & SEG_B_BIT ) {
-        lcd_segment_set_to_lcdmem(digit_segments.SEG_B);
-    }
-
-    if ( glyph & SEG_C_BIT ) {
-        lcd_segment_set_to_lcdmem(digit_segments.SEG_C);
-    }
-
-    if ( glyph & SEG_D_BIT ) {
-        lcd_segment_set_to_lcdmem(digit_segments.SEG_D);
-    }
-
-    if ( glyph & SEG_E_BIT ) {
-        lcd_segment_set_to_lcdmem(digit_segments.SEG_E);
-    }
-
-    if ( glyph & SEG_F_BIT ) {
-        lcd_segment_set_to_lcdmem(digit_segments.SEG_F);
-    }
-
-    if ( glyph & SEG_G_BIT ) {
-        lcd_segment_set_to_lcdmem(digit_segments.SEG_G);
-    }
+    lcd_write_glyph_to_lcdmem( LCDMEM , digitplace, glyph);
 
 }
+
+
+// Write a glyph to the blinking LCD buffer
+
+void lcd_write_glyph_to_lcdbm( byte digitplace, glyph_segment_t glyph ) {
+
+    lcd_write_glyph_to_lcdmem( LCDBMEM , digitplace, glyph);
+
+}
+
+void lcd_write_blank( char *lcdmem_base , byte digitplace ) {
+
+    lcd_digit_segments_t digit_segments = lcd_digit_segments[ digitplace ];
+
+    lcd_segment_clear( lcdmem_base , digit_segments.SEG_A);
+    lcd_segment_clear( lcdmem_base , digit_segments.SEG_B);
+    lcd_segment_clear( lcdmem_base , digit_segments.SEG_C);
+    lcd_segment_clear( lcdmem_base , digit_segments.SEG_D);
+    lcd_segment_clear( lcdmem_base , digit_segments.SEG_E);
+    lcd_segment_clear( lcdmem_base , digit_segments.SEG_F);
+    lcd_segment_clear( lcdmem_base , digit_segments.SEG_G);
+
+}
+
+
 
 void lcd_write_blank_to_lcdmem( byte digitplace ) {
 
-    lcd_digit_segments_t digit_segments = lcd_digit_segments[ digitplace ];
-
-    lcd_segment_clear_to_lcdmem(digit_segments.SEG_A);
-    lcd_segment_clear_to_lcdmem(digit_segments.SEG_B);
-    lcd_segment_clear_to_lcdmem(digit_segments.SEG_C);
-    lcd_segment_clear_to_lcdmem(digit_segments.SEG_D);
-    lcd_segment_clear_to_lcdmem(digit_segments.SEG_E);
-    lcd_segment_clear_to_lcdmem(digit_segments.SEG_F);
-    lcd_segment_clear_to_lcdmem(digit_segments.SEG_G);
+    lcd_write_blank(LCDMEM, digitplace);
 
 }
+
+
+void lcd_write_blank_to_lcdbm( byte digitplace ) {
+
+    lcd_write_blank(LCDBMEM, digitplace);
+
+}
+
 
 // Do a hardware clear of the LCD memory
 // Note this does block until the hardware indicates that the clear is complete.

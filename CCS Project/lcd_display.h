@@ -38,7 +38,14 @@ void lcd_segment_clear_to_lcdmem( lcd_segment_location_t seg  );
 
 void lcd_write_glyph_to_lcdmem( byte digitplace, glyph_segment_t glyph );
 
+// Write a glyph to the blinking LCD buffer
+void lcd_write_glyph_to_lcdbm( byte digitplace , glyph_segment_t glyph );
+
+
 void lcd_write_blank_to_lcdmem( byte digitplace );
+
+void lcd_write_blank_to_lcdbm( byte digitplace );
+
 
 // Show the digit x at position p
 // where p=0 is the rightmost digit
