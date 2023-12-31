@@ -918,8 +918,6 @@ __interrupt void trigger_isr(void) {
         // Start ticking from... now!
         // (We rely on the secs, mins, hours, and days_digits[] all having been init'ed to zeros.)
 
-        // Begin TSL mode on next tick
-        SET_CLKOUT_VECTOR( &TSL_MODE_BEGIN );
 
     }
 
@@ -977,8 +975,6 @@ __interrupt void post_centiday_isr(void) {
     lcd_show_digit_f(  9 , days_digits[3] );
     lcd_show_digit_f( 10 , days_digits[4] );
     lcd_show_digit_f( 11 , days_digits[5] );
-
-    SET_CLKOUT_VECTOR( &TSL_MODE_REFRESH );            // Make up for the second we lost.
 
     CBI( RV3032_CLKOUT_PIFG , RV3032_CLKOUT_B );      // Clear the pending RV3032 INT interrupt flag that got us into this ISR.
 
@@ -1238,6 +1234,34 @@ void time_since_launch_reference() {
 }
 
 
+// Note that solenoid numbers match the PCB markings and range 1-6,
+// where 1 is at 1 oclock and the go counter clockwise from there
+
+void fire_solenoid( unsigned s ) {
+
+    switch (s) {
+    case 1:     SBI( S1_POUT , S1_B ); break;
+    case 2:     SBI( S2_POUT , S2_B ); break;
+    case 3:     SBI( S3_POUT , S3_B ); break;
+    case 4:     SBI( S4_POUT , S4_B ); break;
+    case 5:     SBI( S5_POUT , S5_B ); break;
+    case 6:     SBI( S6_POUT , S6_B ); break;
+    }
+
+    __delay_cycles( 50000 );
+
+    switch (s) {
+    case 1:     CBI( S1_POUT , S1_B ); break;
+    case 2:     CBI( S2_POUT , S2_B ); break;
+    case 3:     CBI( S3_POUT , S3_B ); break;
+    case 4:     CBI( S4_POUT , S4_B ); break;
+    case 5:     CBI( S5_POUT , S5_B ); break;
+    case 6:     CBI( S6_POUT , S6_B ); break;
+    }
+
+
+}
+
 // These two countdown vars keep track of how long until we unlock. We do not initialize them since they will get set when
 // we transition from setting mode to locked mode. They are NOINIT so they will persist though resets and power cycles.
 // These are updated every 3 seconds while we are counting down in locked mode so in case we reset or lose power,
@@ -1424,6 +1448,8 @@ __interrupt void button_isr(void) {
         // Make digitplace 5 blink
         lcd_write_glyph_to_lcdbm( 5 , glyph_8 );
 
+        fire_solenoid(1);
+
     }
 
 
@@ -1451,6 +1477,10 @@ __interrupt void button_isr(void) {
 
         // Make digitplace 0 blink
         lcd_write_glyph_to_lcdbm( 0 , glyph_8 );
+
+        fire_solenoid(1);
+        fire_solenoid(2);
+
 
 
     }
@@ -1876,7 +1906,7 @@ int main( void )
         // becuase it calls back to the C `tsl_next_day()` routine when days increment.
         // We do not set up the trigger ISR since it can never come. We will tick like this
         // forever (or at least until we loose power).
-        SET_CLKOUT_VECTOR( &TSL_MODE_BEGIN );
+        //SET_CLKOUT_VECTOR( &TSL_MODE_BEGIN );
     }
 
     // Activate the RAM-based ISR vector table (rather than the default FRAM based one).
