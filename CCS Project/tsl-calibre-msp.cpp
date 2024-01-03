@@ -63,15 +63,13 @@ void lcd_blinking_mode() {
 // Turn off power to RV3032 (also takes care of making the IO pin not float and disabling the inetrrupt)
 void depower_rv3032() {
 
-    // Make Vcc pin to RV3032 ground. NOte that the RTC will likely keep running for a while off the backup
-    // capacitor, but this should put it into backup mode where CLKOUT is disabled.
+    CBI( RV3032_CLKOUT_PIE , RV3032_CLKOUT_B );     // Disable interrupt so we do not get a spurious one doing this stuff.
+
+    // Make Vcc pin to RV3032 ground.
     CBI( RV3032_VCC_POUT , RV3032_VCC_B);
 
     // Now the CLKOUT pin is floating, so we will pull it
     SBI( RV3032_CLKOUT_PREN , RV3032_CLKOUT_B );    // Enable pull resistor (does not matter which way, just keep pin from floating to save power)
-
-    CBI( RV3032_CLKOUT_PIE , RV3032_CLKOUT_B );     // Disable interrupt.
-    CBI( RV3032_CLKOUT_PIFG , RV3032_CLKOUT_B );    // Clear any pending interrupt.
 
 }
 
@@ -155,7 +153,7 @@ inline void initGPIO() {
 
     CBI( DEBUGB_PDIR , DEBUGB_B );          // DEBUGB=Input
     SBI( DEBUGB_POUT , DEBUGB_B );          // Pull up
-    SBI( DEBUGB_PREN , DEBUGB_B );          // Currently checked at power up, if low then we go into testonly mode.
+    SBI( DEBUGB_PREN , DEBUGB_B );
 
     // --- RV3032
 
@@ -245,9 +243,9 @@ void initLCD() {
             if (lpin>0) {                       // Note that we ignore 0 here because we use 0 as a placeholder. This is ugly.
                 LCDPCTL0 |= 1 << (lpin-0);
             }
-        } else if (lpin <32 ) {         // Note that we ignore 0 here because we use 0 as a placeholder. This is ugly.
+        } else if (lpin <32 ) {
             LCDPCTL1 |= 1 << (lpin-16);
-        } else if (lpin <48 ) {         // Note that we ignore 0 here because we use 0 as a placeholder. This is ugly.
+        } else if (lpin <48 ) {
             LCDPCTL2 |= 1 << (lpin-32);
         }
 
@@ -377,21 +375,16 @@ void initLCD() {
     LCDM4 =  0b00100001;  // L09=MSP_COM1  L08=MSP_COM0
     LCDM5 =  0b10000100;  // L10=MSP_COM3  L11=MSP_COM2
 
+    // Enable per-segment blinking. If the bit is set in LCDMBEM then the segment will blink.
+    // The blink speed is pretty fast, about 10Hz. We use this to indicate which digit is selected
+    // in SETTING mode.
+    // "Settings for LCDMXx and LCDBLKPREx should only be changed while LCDBLKMODx = 00.""
 
     LCDBLKCTL =
             LCDBLKPRE__8 |            // Blinking frequency prescaller. This controls how fast the blink is.
-            LCDBLKMOD_1                 // Individual control of blinking segments from LCDBM
+            LCDBLKMOD_1               // Individual control of blinking segments from LCDBM
     ;
 
-
-/*
-
-    LCDBLKCTL =
-            LCDBLKPRE__4 |            // Blinking frequency prescaller. This controls how fast the blink is.
-            LCDBLKMOD_2               // Blink all segments
-    ;
-
-*/
 
     LCDCTL0 |= LCDON;                                           // Turn on LCD
 
@@ -677,6 +670,18 @@ void rv3032_shutdown() {
 
     i2c_shutdown();
 
+}
+
+
+void enable_rv3032_clkout_interrupt() {
+    // Now we enable the interrupt on the RTC CLKOUT pin. For now on we must remember to
+    // disable it again if we are going to end up in sleepforever mode.
+
+    // Clear any pending interrupts from the RV3032 clkout pin and then enable interrupts for the next falling edge
+    // We we should not get a real one for 500ms so we have time to do our stuff
+
+    CBI( RV3032_CLKOUT_PIFG     , RV3032_CLKOUT_B    );
+    SBI( RV3032_CLKOUT_PIE      , RV3032_CLKOUT_B    );
 }
 
 
@@ -1233,12 +1238,7 @@ void time_since_launch_reference() {
 
 }
 
-
-// Note that solenoid numbers match the PCB markings and range 1-6,
-// where 1 is at 1 oclock and the go counter clockwise from there
-
-void fire_solenoid( unsigned s ) {
-
+void solenoidOn( unsigned s ) {
     switch (s) {
     case 1:     SBI( S1_POUT , S1_B ); break;
     case 2:     SBI( S2_POUT , S2_B ); break;
@@ -1248,8 +1248,9 @@ void fire_solenoid( unsigned s ) {
     case 6:     SBI( S6_POUT , S6_B ); break;
     }
 
-    __delay_cycles( 50000 );
+}
 
+void solenoidOff( unsigned s ) {
     switch (s) {
     case 1:     CBI( S1_POUT , S1_B ); break;
     case 2:     CBI( S2_POUT , S2_B ); break;
@@ -1258,6 +1259,47 @@ void fire_solenoid( unsigned s ) {
     case 5:     CBI( S5_POUT , S5_B ); break;
     case 6:     CBI( S6_POUT , S6_B ); break;
     }
+
+}
+
+void fire_solenoid( unsigned s) {
+
+
+    // First completely pull 1
+    solenoidOn(s);
+    __delay_cycles( 50000 );
+    solenoidOff(s);
+
+}
+
+
+// Note that solenoid numbers match the PCB markings and range 1-6,
+// where 1 is at 1 oclock and the go counter clockwise from there
+
+void fire_solenoids() {
+
+
+    // First completely pull 1
+    fire_solenoid(1);
+    fire_solenoid(2);
+    fire_solenoid(1);
+    fire_solenoid(2);
+
+    // Next lets try to dither in 2
+/*
+    for( unsigned i = 0; i < 50 ; i ++ ) {
+
+        solenoidOn(1);
+        __delay_cycles( 100 );
+        solenoidOff(1);
+
+        solenoidOn(2);
+        __delay_cycles( 900 );
+        solenoidOff(2);
+
+
+    }
+*/
 
 
 }
@@ -1327,21 +1369,21 @@ void setting_mode() {
 unsigned int h=0,m=0,s=0;
 
 
-//#pragma vector=RV3032_CLKOUT_VECTOR
+#pragma vector=RV3032_CLKOUT_VECTOR
 __interrupt void clkout_isr(void) {
 
     s++;
 
-    if (s==60) {
+    if (s>=60) {
         s=0;
 
         m++;
-        if (m==60) {
+        if (m>=60) {
             m=0;
 
             h++;
 
-            if (h==24) {
+            if (h>=24) {
                 h=0;
             }
 
@@ -1355,7 +1397,7 @@ __interrupt void clkout_isr(void) {
 
     *secs_lcdmemw = secs_lcd_words[s];
 
-    RV3032_CLKOUT_PIV;
+    RV3032_CLKOUT_PIV;          // Implemented as "MOV.W   &Port_1_2_P2IV,R15"
 
 }
 
@@ -1417,6 +1459,25 @@ void enable_button_interrupts() {
 #endif
 
 
+void testSolenoid(unsigned s) {
+
+    solenoidOn(s);
+    __delay_cycles(50000);
+
+    for( unsigned i=0; i<200 ; i++ ) {
+
+        solenoidOn(s);
+        __delay_cycles(1000);
+        solenoidOff(s);
+        __delay_cycles(1000);
+
+    }
+
+    solenoidOff(s);
+
+
+}
+
 
 // Handle interrupt for any switch (buttons and locking trigger)
 
@@ -1443,12 +1504,15 @@ __interrupt void button_isr(void) {
         *secs_lcdmemw = secs_lcd_words[s];
 
         // Make digitplace 0 not blink
-        lcd_write_blank_to_lcdbm( 0 );
+        //lcd_write_blank_to_lcdbm( 0 );
 
         // Make digitplace 5 blink
-        lcd_write_glyph_to_lcdbm( 5 , glyph_8 );
+        //lcd_write_glyph_to_lcdbm( 5 , glyph_8 );
 
-        fire_solenoid(1);
+   //     fire_solenoid(1);
+
+
+        testSolenoid(2);
 
     }
 
@@ -1473,13 +1537,75 @@ __interrupt void button_isr(void) {
         *hours_lcdmemw = hours_lcd_words[h];
 
         // Make digitplace 5 not blink
-        lcd_write_blank_to_lcdbm( 5 );
+        //lcd_write_blank_to_lcdbm( 5 );
 
         // Make digitplace 0 blink
-        lcd_write_glyph_to_lcdbm( 0 , glyph_8 );
+        //lcd_write_glyph_to_lcdbm( 0 , glyph_8 );
 
+        testSolenoid(1);
+
+
+/*
+
+        solenoidOn(2);
+        __delay_cycles(1000);
+        solenoidOff(2);
+
+
+        solenoidOn(1);
+        __delay_cycles(50000);
+        solenoidOff(1);
+
+*/
+/*
+
+        for( unsigned i=0; i<100 ; i++ ) {
+
+            solenoidOn(1);
+            __delay_cycles(1000);
+            solenoidOff(1);
+
+            solenoidOn(2);
+            __delay_cycles(9000);
+            solenoidOff(2);
+
+        }
+
+        */
+
+
+/*
+
+
+        for( unsigned i=0; i<1000 ; i++ ) {
+
+            solenoidOn(1);
+            __delay_cycles(100);
+            solenoidOff(1);
+
+            solenoidOn(2);
+            __delay_cycles(100);
+            solenoidOff(2);
+
+            __delay_cycles(800);
+
+        }
+
+*/
+
+//        solenoidOn(1);
+//        solenoidOn(2);
+        __delay_cycles(50000);
+ //       solenoidOff(1);
+ //       solenoidOff(2);
+
+/*
+        fire_solenoid(2);
         fire_solenoid(1);
         fire_solenoid(2);
+        fire_solenoid(1);
+*/
+        //fire_solenoids();
 
 
 
@@ -1551,7 +1677,7 @@ __interrupt void button_isr(void) {
 
         // Ack the interrupt
 
-        CBI( SWITCH_CHANGE_PIFG , SWITCH_MOVE_B );
+        CBI( SWITCH_CHANGE_PIFG , SWITCH_MOVE_B );  // Implemented as "AND.B   #0x007f,&Port_A_PAIFG"
 
     }
 
@@ -1653,7 +1779,8 @@ void regulatorTest() {
 }
 
 // Proof of life test just oscillates the easy-to-reach MOVE switch pin between 0 and Vcc at 0.5Hz
-// It is the upper right pin of the button.
+// It is the upper right pin of the button. Don't push the button while running this test or you will
+// short out the MCU.
 
 void test_twiddle_move_switch_pin() {
     while (1) {
@@ -1720,14 +1847,18 @@ int main( void )
     // Initialize the RV3032 with proper clkout & backup settings.
     rv3032_init();
 
+    //regulatorTest();
 
     enable_button_interrupts();
+    enable_rv3032_clkout_interrupt();
+
+    lcd_write_glyph_to_lcdmem(0, glyph_J);
     __bis_SR_register(LPM4_bits | GIE );                // Enter LPM4
     __no_operation();                                   // For debugger
 
 
     //lcd_test();
-    regulatorTest();
+    //regulatorTest();
 
 
 
