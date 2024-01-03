@@ -97,7 +97,6 @@ The MSP430 has a built in adjustable voltage regulator. Is this more efficient t
 
 Let's test! Here we display the specified pattern and then go into LPM4 sleep and then measure current using a Joulescope. 
 
-(IN PROGRESS:)
 Vcc=3.55V<br>(2xAA fresh)
 | Pattern | TPS7A30 |  Internal 2.96V  |  Internal 3.08V |
 | - | -: | -: |   -: | 
@@ -128,13 +127,23 @@ And just for fun, let's see how much power we could save if we did not need a re
 
 Vcc=3.0V
 | Pattern | Direct Vcc |
-| - | -: 
+| - | -: |
 | "555555" | 1.25uA | 
 
-... so, wow, the TPS7A is really efficient in this application.
+... so, wow, the TPS7A is really efficient for generating the LCD bias voltage in this application.
+
+Since we are now going to include the TPS7A in the design, could we get even more power savings by having it also regulate the Vcc for the MSP430?
+
+Vcc=3.55V
+| Test | Direct Vcc | TSP7A2030 |
+| - | -: |
+| Static "123456" | 1.14uA | 1.14uA |
+| 1Hz digit updates | 1.09uA | 1.06uA |
+
+So ever so slight saving. Probably not worth the loss in flexibility since ifonly use the TSP7A20 for the LCD bias voltage and we can not get it, we can 
+just omit it from the board and and instead enable the internal regulator. 
 
 ## Build notes
-
 
 
 ## Current Usage
