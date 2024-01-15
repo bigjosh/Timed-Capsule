@@ -9,9 +9,6 @@
 
 #include "tsl_asm.h"
 
-
-#include "acid_fram_record.hpp"
-
 #include "define_lcd_pinout.h"
 #include "define_lcd_to_msp430_connections.h"
 #include "define_msp430_lcd_device.h"
@@ -19,7 +16,6 @@
 
 #include "lcd_display.h"
 #include "lcd_display_exp.h"
-
 
 #define RV_3032_I2C_ADDR (0b01010001)           // Datasheet 6.6
 
@@ -109,6 +105,7 @@ void error_mode( byte code ) {
 
 inline void initGPIO() {
 
+    // Default pin init. We will also (possabibly duplicatively) init individual pins
     // TODO: use the full word-wide registers
     // Initialize all GPIO pins for low power OUTPUT + LOW
     P1DIR = 0xFF;P2DIR = 0xFF;P3DIR = 0xFF;P4DIR = 0xFF;
@@ -119,13 +116,22 @@ inline void initGPIO() {
 
     // --- Solenoid MOSFETs off
 
-    // Set Solenoid transistor pins to output (will be driven low by default, so off)
+    // Set Solenoid transistor pins to output off
+    // Note that they are also pulled down by 1K ohm resistors so they do not float before we get here during reset
+    CBI( S1_POUT , S1_B );
+    CBI( S2_POUT , S2_B );
+    CBI( S3_POUT , S3_B );
+    CBI( S4_POUT , S4_B );
+    CBI( S5_POUT , S5_B );
+    CBI( S6_POUT , S6_B );
+
     SBI( S1_PDIR , S1_B );
     SBI( S2_PDIR , S2_B );
     SBI( S3_PDIR , S3_B );
     SBI( S4_PDIR , S4_B );
     SBI( S5_PDIR , S5_B );
     SBI( S6_PDIR , S6_B );
+
 
     // --- Optional TPS7A regulator external bias voltage source
 
@@ -203,12 +209,12 @@ inline void initGPIO() {
 
     CBI( SWITCH_MOVE_POUT , SWITCH_MOVE_B );      // low
     SBI( SWITCH_MOVE_PDIR , SWITCH_MOVE_B );      // drive
-    SBI( SWITCH_MOVE_PREN , SWITCH_MOVE_B );      // Set pull mode to UP (no effect when pin is in OUTPUT mode)
+    SBI( SWITCH_MOVE_PREN , SWITCH_MOVE_B );      // Set pull mode to UP when POUT is high and PDIR is low (no effect when pin is in OUTPUT mode)
     SBI( SWITCH_MOVE_PIES , SWITCH_MOVE_B );      // Interrupt on high-to-low transition (pin pulled up, button connects to ground)
 
     CBI( SWITCH_CHANGE_POUT , SWITCH_CHANGE_B );      // low
     SBI( SWITCH_CHANGE_PDIR , SWITCH_CHANGE_B );      // drive
-    SBI( SWITCH_CHANGE_PREN , SWITCH_CHANGE_B );      // Set pull mode to UP (no effect when pin is in OUTPUT mode)
+    SBI( SWITCH_CHANGE_PREN , SWITCH_CHANGE_B );      // Set pull mode to UP when POUT is high and PDIR is low (no effect when pin is in OUTPUT mode)
     SBI( SWITCH_CHANGE_PIES , SWITCH_CHANGE_B );      // Interrupt on high-to-low transition (pin pulled up, button connects to ground)
 
     // Note that we do not enable the trigger pin interrupt here. It will get enabled when we
@@ -546,49 +552,11 @@ uint8_t c2bcd( uint8_t c ) {
 
 }
 
-// These two values must be atomically updated so that we can reliably count centuries even in the face
-// of a potential battery change that straddles the century roll over.
-
-struct century_counter_t {
-    unsigned postmidcentury_flag;       // Set to 1 if we have past the 50 year mark in current century.
-    unsigned century_count;             // How many centuries have we been in TSL mode?
-};
-
-// Initial starting state for a century counter
-century_counter_t century_counter_init = {
-    .postmidcentury_flag = 0,
-    .century_count = 0,
-};
-
-
-// Here is the persistent data that we store in "information memory" FRAM that survives power cycles
-// and reprogramming.
-
-struct __attribute__((__packed__)) persistent_data_t {
-
-    // Archival use only. Never read by the unit.
-    rv3032_time_block_t commisioned_time;       // Calendar time when this unit was commissioned. Set during programming, never read.
-    rv3032_time_block_t launched_time;          // Time when this unit was launched relative to commissioned. Set when trigger pulled, never read.
-
-    // State. We have 3 persistent states, (1) first startup fresh from programming, (2) ready to launch, (3) launched.
-    // We make these volatile to ensure that the compiler actually writes changes to memory rather than trying to cache in a register
-    volatile unsigned once_flag;                             // Set to 1 first time we boot up after programming
-    volatile unsigned launch_flag;                           // Set to 1 when the trigger pin is pulled
-
-    // Used to count centuries since the RTC does not.
-    // Note this is complicated because there is no way to atomically write to the FRAM, and in fact any one write
-    // could be corrupted if power fails just at the right moment. But since at most one write can fail, we can use
-    // a two-step commit with a fall back.
-    // We do NOT make this volatile since the member values themselves are volatile.
-
-    acid_FRAM_record_t<century_counter_t> acid_century_counter;
-
-};
 
 // Tell compiler/linker to put this in "info memory" at 0x1800
 // This area of memory never gets overwritten, not by power cycle and not by downloading a new binary image into program FRAM.
 // We have to mark `volatile` so that the compiler will really go to the FRAM every time rather than optimizing out some accesses.
-persistent_data_t __attribute__(( __section__(".infoA") )) persistent_data;
+unsigned __attribute__(( __section__(".infoA") )) __attribute__((persistant)) reset_counter_value;
 
 void unlock_persistant_data() {
     SYSCFG0 = PFWP;                     // Write protect only program FRAM. Interestingly it appears that the password is not needed here?
@@ -732,8 +700,6 @@ uint16_t rtc_days=0;       // only needs to be able to hold up to 1 century of d
 
 // This counts the centuries, which we have to do separately since the RTC will not do it for us
 
-century_counter_t century_counter;      // Cached copy of the ACID one in `persistantData` so we do not need to read that one out every time while running
-unsigned days_into_current_century;     // So we know when to update the post mid century flag and then to tick the century
 
 // Read time from RTC into our global time variables
 
@@ -897,11 +863,6 @@ __interrupt void trigger_isr(void) {
 
         // First get current time and save it to FRAM for archival purposes.
         // Also update the persistent storage to reflect that we launched now.
-        unlock_persistant_data();
-        i2c_read( RV_3032_I2C_ADDR , RV3032_SECS_REG  , (void *)  &persistent_data.launched_time , sizeof( rv3032_time_block_t ) );
-        persistent_data.launch_flag=0x01;
-        persistent_data.acid_century_counter.writeData(&century_counter_init);
-        lock_persistant_data();
 
         // Then zero out the RTC to start counting over again, starting now. Note that writing any value to the seconds register resets the sub-second counters to the beginning of the second.
         // "Writing to the Seconds register creates an immediate positive edge on the LOW signal on CLKOUT pin."
@@ -992,83 +953,6 @@ __interrupt void post_centiday_isr(void) {
 void tsl_next_day() {
 
     // First take care of our century book keeping...
-
-    days_into_current_century++;
-
-    if (days_into_current_century>=(days_per_century/2)) {
-
-        // We are more than half way into the current century
-
-        century_counter_t cc;
-        persistent_data.acid_century_counter.readData(&cc);
-
-        // Has it been 100 years since we last incremented the century counter?
-
-        if (days_into_current_century >= days_per_century ) {
-
-            // We just ticked into a new century! Party like its 2x00!
-
-            // Atomically increment us to the next century
-            cc.century_count++;
-            cc.postmidcentury_flag=0;
-            unlock_persistant_data();
-            persistent_data.acid_century_counter.writeData(&cc);
-            lock_persistant_data();
-
-            // Get ready for next century click!
-            days_into_current_century -= days_per_century;
-
-        } else {
-
-            // It is a new day, and we are past the middle of the current century
-            // Check to see if we have already recorded that we are past the middle
-
-            if (cc.postmidcentury_flag != 1) {
-
-                // We have just crossed the middle of the century for the first time since
-                // the last century click (which may have been more than 50 years ago if the battery was
-                // pulled right at year 50)
-
-                // Record that we have pasted the middle century mark so if we have (1) have a battery
-                // pull between now and the end of the century, and (2) the battery is put back in after the
-                // century has already clicked, then we will notice it when we repower up and
-                // account for the missing century
-
-                cc.postmidcentury_flag = 1;
-                unlock_persistant_data();
-                persistent_data.acid_century_counter.writeData(&cc);
-                lock_persistant_data();
-
-            }
-
-        }
-    }
-
-    // Now that century book keeping is done, we can update the actual display to reflect the new day
-
-    if (days_digits[0] < 9) {
-
-        days_digits[0]++;
-
-        lcd_show_digit_f(  6 , days_digits[0] );
-
-        return;
-
-    }
-
-    days_digits[0]=0x00;
-
-    if (days_digits[1] < 9) {
-
-        lcd_show_digit_f( 6 , 0 );
-
-        days_digits[1]++;
-
-        lcd_show_digit_f(  7 , days_digits[1] );
-
-        return;
-
-    }
 
     // If we get here, then the 100 day counter has clicked so we need to do special update
     // and increment remaining digits for next tick.
@@ -1334,9 +1218,7 @@ unsigned int countdown_tripple_secs_backup_value;
 unsigned int countdown_days_backup_value;
 
 
-// Incremented each time we boot just to keep track of battery changes.
-#pragma NOINIT
-unsigned int reset_counter_value=0;
+unsigned reset_reason=99;
 
 
 void setting_mode() {
@@ -1344,7 +1226,8 @@ void setting_mode() {
     enum units_t {
         YEARS,
         DAYS,
-        HOURS
+        HOURS,
+        SECONDS
     };
 
 
@@ -1368,6 +1251,8 @@ void setting_mode() {
 
 unsigned int h=0,m=0,s=0;
 
+// Timer interrupt
+// Should fire once per second
 
 #pragma vector=RV3032_CLKOUT_VECTOR
 __interrupt void clkout_isr(void) {
@@ -1377,6 +1262,7 @@ __interrupt void clkout_isr(void) {
     if (s>=60) {
         s=0;
 
+/*
         m++;
         if (m>=60) {
             m=0;
@@ -1392,7 +1278,7 @@ __interrupt void clkout_isr(void) {
         }
 
         *mins_lcdmemw = mins_lcd_words[m];
-
+*/
     }
 
     *secs_lcdmemw = secs_lcd_words[s];
@@ -1488,6 +1374,9 @@ __interrupt void button_isr(void) {
     // We capture a snapshot here so we do not miss any updates, but also so we can clear any changes that happen
     // from switch bounce below.
 
+    // Show reset count
+    *hours_lcdmemw = secs_lcd_words[reset_counter_value];
+
     unsigned capture_interrupt_flags = SWITCH_CHANGE_PIFG;
 
     // If this pin interrupted, and it is armed, then register a press
@@ -1504,10 +1393,10 @@ __interrupt void button_isr(void) {
         *secs_lcdmemw = secs_lcd_words[s];
 
         // Make digitplace 0 not blink
-        //lcd_write_blank_to_lcdbm( 0 );
+        lcd_write_blank_to_lcdbm( 0 );
 
         // Make digitplace 5 blink
-        //lcd_write_glyph_to_lcdbm( 5 , glyph_8 );
+        lcd_write_glyph_to_lcdbm( 5 , glyph_8 );
 
    //     fire_solenoid(1);
 
@@ -1537,26 +1426,26 @@ __interrupt void button_isr(void) {
         *hours_lcdmemw = hours_lcd_words[h];
 
         // Make digitplace 5 not blink
-        //lcd_write_blank_to_lcdbm( 5 );
+        lcd_write_blank_to_lcdbm( 5 );
 
         // Make digitplace 0 blink
-        //lcd_write_glyph_to_lcdbm( 0 , glyph_8 );
+        lcd_write_glyph_to_lcdbm( 0 , glyph_8 );
 
-        testSolenoid(1);
+        // testSolenoid(1);
+
 
 
 /*
-
-        solenoidOn(2);
+        solenoidOn(1);
         __delay_cycles(1000);
-        solenoidOff(2);
-
+        solenoidOff(1);
+*/
 
         solenoidOn(1);
         __delay_cycles(50000);
         solenoidOff(1);
 
-*/
+
 /*
 
         for( unsigned i=0; i<100 ; i++ ) {
@@ -1832,11 +1721,16 @@ int main( void )
     PMMCTL0_H = PMMPW_H;                // Open PMM Registers for write
     PMMCTL0_L &= ~(SVSHE);              // Disable high-side SVS
 
+    // Count the number of boot-ups since programming
+    SYSCFG0 &= ~PFWP;                   // Program FRAM write enable
+//    reset_counter_value++;
+    SYSCFG0 |= PFWP;                    // Program FRAM write protected (not writable)
+
+
     // Init GPIO first to be safe.
     initGPIO();
     // Init LCD next so we can talk
     initLCD();
-
 
     // Power up display with a nice dash pattern
     lcd_show_dashes();
@@ -1849,17 +1743,66 @@ int main( void )
 
     //regulatorTest();
 
+
+    // Simple Solenoid tester
+
+    // Set buttons as inputs
+    CBI( SWITCH_CHANGE_PDIR , SWITCH_CHANGE_B);
+    CBI( SWITCH_MOVE_PDIR   , SWITCH_MOVE_B);
+
+    // Pull-up pins
+    // Note that we set the pull mode to UP in initGPIO
+    // and setting out to 1 when PDIR is clear will enable the pull-up
+
+    SBI( SWITCH_CHANGE_POUT , SWITCH_CHANGE_B );
+    SBI( SWITCH_MOVE_POUT , SWITCH_MOVE_B );
+
+    while (1) {
+
+        if (TBI( SWITCH_CHANGE_PIN , SWITCH_CHANGE_B)) {
+            // Button Up
+            solenoidOff(1);
+            *secs_lcdmemw = secs_lcd_words[0];
+
+        }
+        else {
+            solenoidOn(1);
+            *secs_lcdmemw = secs_lcd_words[1];
+        }
+
+
+        if (TBI( SWITCH_MOVE_PIN , SWITCH_MOVE_B)) {
+            // Button Up
+            solenoidOff(2);
+            *hours_lcdmemw = hours_lcd_words[0];
+
+        }
+        else {
+            solenoidOn(2);
+            *hours_lcdmemw = hours_lcd_words[1];
+
+        }
+
+
+    }
+
     enable_button_interrupts();
     enable_rv3032_clkout_interrupt();
 
     lcd_write_glyph_to_lcdmem(0, glyph_J);
+
+
+    *secs_lcdmemw = secs_lcd_words[55];
+    *mins_lcdmemw = mins_lcd_words[44];
+    *hours_lcdmemw = hours_lcd_words[reset_counter_value];
+
+
     __bis_SR_register(LPM4_bits | GIE );                // Enter LPM4
     __no_operation();                                   // For debugger
 
 
     //lcd_test();
     //regulatorTest();
-
 
 
     #warning testing only
@@ -1934,111 +1877,6 @@ int main( void )
 
     CBI( RV3032_CLKOUT_PIFG     , RV3032_CLKOUT_B    );
     SBI( RV3032_CLKOUT_PIE      , RV3032_CLKOUT_B    );
-
-    if ( persistent_data.launch_flag != 0x01 ) {
-
-        // We have never launched!
-
-        // First we need to make sure that the trigger pin is inserted because
-        // we would not want to just launch because the pin was out when batteries were inserted.
-        // This also lets us test both trigger positions during commissioning at the factory.
-
-        CBI( TRIGGER_PDIR , TRIGGER_B );      // Input
-        SBI( TRIGGER_PREN , TRIGGER_B );      // Enable pull resistor
-        SBI( TRIGGER_POUT , TRIGGER_B );      // Pull up
-
-        step =0;                              // Used to slide a dash indicator pointing to the pin location
-
-
-        // Set us up to run the loading/ready-to-launch sequence on the next tick
-        // Note that the trigger ISR will be activated when we get into ready-to-launch
-#warning
-        //SET_CLKOUT_VECTOR( &startup_isr);
-
-        // We will go into "load pin" mode when next second ticks. This gives the pull-up a chance to take effect and also avoids any bounce aliasing right at power up.
-
-    } else {
-
-        // Read the time since launch from the RTC into our global time variables. We know the RTC has good time since we checked status above.
-        RV_3032_read_time();
-
-        days_into_current_century = rtc_days;   // Capture this, we will continue to use it while running
-
-        // Alas, the RV3032 does not track centuries so we need to do some extra work here to account for them.
-        // First read the most recently stored century record
-
-        persistent_data.acid_century_counter.readData( &century_counter );
-
-        // Next compute if we are in the first or second half of the current century (using the date we read from the RTC)
-        // Remember that `days` here is the number of days since the current century started.
-        unsigned current_post_midcentury_flag = (days_into_current_century >= days_per_century/2);
-
-        // Now check if a century has rolled over while we were powered down
-        // That is "it was the 2nd half of the current century the last time a day ticked by, but not it is the first half of the century"
-        // (this would happen if a battery change happened right at a century change)
-
-        if ( century_counter.postmidcentury_flag && !current_post_midcentury_flag ) {
-
-            // We were in the 2nd half of the century before, and now we are back at the first half,
-            // so the century must have rolled in between
-
-            century_counter.century_count++;
-            century_counter.postmidcentury_flag=0;
-
-            // Save this result
-
-            unlock_persistant_data();
-            persistent_data.acid_century_counter.writeData(&century_counter);
-            lock_persistant_data();
-
-        }
-
-        // Add the accumulated centuries to days into current century to calculate the total rtc_days since we launched.
-        // Note we only need this value temporarily to scatter the value into the digits array which is where we update/display
-
-        unsigned long days_since_launch = days_into_current_century + ( century_counter.century_count * days_per_century );
-
-        // OK, now `days_since_launch` is the full number of days that have passed since we launched and days_into_current_century is the number of days into the current century
-
-        // Break out the days into digits for more efficient updating while running.
-        // We only do this ONCE per set of batteries so no need for efficiency here.
-
-        days_digits[0]= (days_since_launch / 1      ) % 10 ;
-        days_digits[1]= (days_since_launch / 10     ) % 10 ;
-        days_digits[2]= (days_since_launch / 100    ) % 10 ;
-        days_digits[3]= (days_since_launch / 1000   ) % 10 ;
-        days_digits[4]= (days_since_launch / 10000  ) % 10 ;
-        days_digits[5]= (days_since_launch / 100000 ) % 10 ;
-
-        // Show the days since launch on the display
-
-        lcd_show_digit_f(  6 , days_digits[0] );
-        lcd_show_digit_f(  7 , days_digits[1] );
-        lcd_show_digit_f(  8 , days_digits[2] );
-        lcd_show_digit_f(  9 , days_digits[3] );
-        lcd_show_digit_f( 10 , days_digits[4] );
-        lcd_show_digit_f( 11 , days_digits[5] );
-
-        // Note here that we show the time as read from the RTC, but on the next call to the
-        // ISR that happens in 1 second, we will use these same values to show the *next* second
-        // since the ISR seconds table is offset by 1. We do this for efficiency since the MSP430
-        // only has post-increment, so it would take an extra cycle to increment before display in the ISR.
-
-        lcd_show_digit_f( 4 , rtc_hours % 10  );
-        lcd_show_digit_f( 5 , rtc_hours / 10  );
-        lcd_show_digit_f( 2 , rtc_mins  % 10  );
-        lcd_show_digit_f( 3 , rtc_mins  / 10  );
-        lcd_show_digit_f( 0 , rtc_secs  % 10  );
-        lcd_show_digit_f( 1 , rtc_secs  / 10  );
-
-        // Now start ticking at next second tick interrupt
-        // The TSL_MODE_BEGIN ISR will initialize the TSL mode counting registers from
-        // the `hours`, `mins`, and `secs` globals. Note thta the ISR does not know about `days`
-        // becuase it calls back to the C `tsl_next_day()` routine when days increment.
-        // We do not set up the trigger ISR since it can never come. We will tick like this
-        // forever (or at least until we loose power).
-        //SET_CLKOUT_VECTOR( &TSL_MODE_BEGIN );
-    }
 
     // Activate the RAM-based ISR vector table (rather than the default FRAM based one).
     // We use the RAM-based one so that we do not have to unlock FRAM every time we want to
