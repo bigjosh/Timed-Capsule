@@ -1348,14 +1348,14 @@ void enable_button_interrupts() {
 void testSolenoid(unsigned s) {
 
     solenoidOn(s);
-    __delay_cycles(50000);
+    __delay_cycles(50000);          // 50ms initial pull
 
-    for( unsigned i=0; i<200 ; i++ ) {
+    for( unsigned i=0; i<100 ; i++ ) {      // half power for 100 * 1ms = 100ms
 
         solenoidOn(s);
-        __delay_cycles(1000);
+        __delay_cycles(500);            // on .5ms
         solenoidOff(s);
-        __delay_cycles(1000);
+        __delay_cycles(500);            // off .5ms
 
     }
 
@@ -1760,14 +1760,14 @@ int main( void )
     while (1) {
 
         if (TBI( SWITCH_CHANGE_PIN , SWITCH_CHANGE_B)) {
+
             // Button Up
-            solenoidOff(1);
             *secs_lcdmemw = secs_lcd_words[0];
 
         }
         else {
-            solenoidOn(1);
             *secs_lcdmemw = secs_lcd_words[1];
+            testSolenoid(1);
         }
 
 
