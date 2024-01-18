@@ -85,6 +85,11 @@ To make LCD updates as power efficient as possible, we precomute the LCDMEM valu
 
 We also further reduce power using the MSP430's LCD buffer hardware. We keep the "days" display in one LCD buffer and the "HHMMSS" in the the other buffer. This way we only need to update one bit to switch between the two and therefore only end up needing to write to the "days" page once per day to update the day count. 
 
+Finally, we use the MSP430's blinking segment buffer to create the cursor in setting mode. Since this is all done in hardware, the MCU is always sleeping in setting mode
+except immedeately after a button is pushed or the trigger is activated. 
+
+The 100 ohm resistor between the battery and the Vcc pin of the MCU is needed to create a low pass filter. This slows down the voltage changes when the solenoids turn on and off (these solenoids pull more than 1 amp). The MCU can brown out if it sees a change on the Vcc pin faster than 1V/us. The maximum current the MCU can pull is only about 2mA so we only lose 0.2 volts of power supply voltage worst case. 
+
 ## No power mode
 
 If you somehow manage to interrupt the power durring countdown, the timer will resume counting at whatever time is was at when the power was removed. 
