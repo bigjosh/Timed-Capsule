@@ -122,5 +122,14 @@ void lcd_show_zeros();
 void lcd_cls();
 
 
+// Init the "d" in the days display in the secondary LCD buffer
+void lcd_show_day_label_lcdbmem();
+
+
+// Print the current days value into the secondary LCD buffer
+// Currently leading spaces, but could be leading 0s
+
+void lcd_show_days_lcdbmem( const unsigned days );
+
 
 #endif /* LCD_DISPLAY_H_ */

@@ -407,14 +407,99 @@ inline void lcd_show() {
 // where p=0 is the rightmost digit
 
 
-void lcd_show_f( const uint8_t pos, const glyph_segment_t segs ) {
-
+void lcd_show_f( char *lcdmem_base ,  const uint8_t pos, const glyph_segment_t segs ) {
 
     byte digitplace = digit_positions_rj( pos );
 
-    lcd_write_glyph_to_lcdmem( digitplace , segs );
+    lcd_write_glyph_to_lcdmem( lcdmem_base , digitplace , segs );
 
 }
+
+
+void lcd_show_f( const uint8_t pos, const glyph_segment_t segs ) {
+
+
+    lcd_show_f( LCDMEM ,  pos , segs );
+
+}
+
+
+void lcd_show_digit_f( const uint8_t pos, const byte d ) {
+
+    lcd_show_f( pos , digit_glyphs[ d ] );
+}
+
+
+void lcd_show_digit_f( char *lcd_base , const uint8_t pos, const byte d ) {
+
+    lcd_show_f( lcd_base , pos , digit_glyphs[ d ] );
+}
+
+
+
+
+// Print the current days value into the LCDBMEM buffer
+// Currently leading spaces, but could be leading 0s
+// TODO: This could be optimized to use the precomputed 2-digit tables, but is it worth it?
+
+void lcd_show_days_lcdbmem( const unsigned days ) {
+
+    unsigned x=days;
+
+    if (x>10000) {
+
+        unsigned y = x/10000;
+        lcd_show_digit_f( LCDBMEM , 5 , x);
+
+        x = x - (y*10000);
+    } else {
+        lcd_write_glyph_to_lcdmem( LCDBMEM , 5 , glyph_SPACE);
+    }
+
+
+    if (x>1000) {
+
+        unsigned y = x/1000;
+        lcd_show_digit_f(LCDBMEM , 4 , x);
+
+        x = x - (y*1000);
+    } else {
+        lcd_write_glyph_to_lcdmem( LCDBMEM , 4 , glyph_SPACE);
+    }
+
+
+    if (x>100) {
+
+        unsigned y = x/100;
+        lcd_show_digit_f(LCDBMEM , 3 , x);
+
+        x = x - (y*100);
+    } else {
+        lcd_write_glyph_to_lcdmem( LCDBMEM , 3 , glyph_SPACE);
+    }
+
+
+    if (x>10) {
+
+        unsigned y = x/10;
+        lcd_show_digit_f(LCDBMEM , 2 , x);
+
+        x = x - (y*10);
+    } else {
+        lcd_write_glyph_to_lcdmem( LCDBMEM , 2 , glyph_SPACE);
+    }
+
+
+    // Always show rightmost digit even if 0
+    lcd_show_digit_f(LCDBMEM , 1 , x);
+
+}
+
+
+void lcd_show_day_label_lcdbmem() {
+    lcd_write_glyph_to_lcdmem( LCDBMEM , 0 , glyph_d );
+}
+
 
 inline void lcd_show_fast_secs( uint8_t secs ) {
 
@@ -422,10 +507,7 @@ inline void lcd_show_fast_secs( uint8_t secs ) {
 
 }
 
-void lcd_show_digit_f( const uint8_t pos, const byte d ) {
 
-    lcd_show_f( pos , digit_glyphs[ d ] );
-}
 
 
 // For now, show all 9's.
