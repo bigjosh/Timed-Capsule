@@ -49,11 +49,6 @@
 #define USE_TPS7A_LCD_BIAS
 
 
-// Put the LCD into blinking mode
-
-void lcd_blinking_mode() {
-    LCDBLKCTL = LCDBLKPRE__64 | LCDBLKMOD_2;       // Clock prescaler for blink rate, "10b = Blinking of all segments"
-}
 
 
 // Turn off power to RV3032 (also takes care of making the IO pin not float and disabling the inetrrupt)
@@ -89,7 +84,7 @@ void sleepforeverandever(){
 // Assumes all interrupts have been individually disabled.
 #pragma FUNC_NEVER_RETURNS
 void blinkforeverandever(){
-    lcd_blinking_mode();
+    lcd_blinking_mode_all();
     sleepforeverandever();
 }
 
@@ -100,6 +95,10 @@ void error_mode( byte code ) {
     blinkforeverandever();
 }
 
+void sleep_with_interrupts() {
+    __bis_SR_register(LPM4_bits | GIE );                // Enter LPM4
+    __no_operation();                                   // For debugger
+}
 
 // Does not enable interrupts on any pins
 
@@ -231,171 +230,6 @@ inline void initGPIO() {
     PM5CTL0 &= ~LOCKLPM5;
 
 }
-
-void initLCD() {
-
-    // Configure LCD pins
-    SYSCFG2 |= LCDPCTL;                                 // LCD R13/R23/R33/LCDCAP0/LCDCAP1 pins enabled
-
-    LCDBLKCTL = 0x00;           // "Settings for LCDMXx and LCDBLKPREx should only be changed while LCDBLKMODx = 00."
-                                // And note that this register is NOT cleared on reset, so we clear it here.
-
-    // Enable LCD pins as defined in the LCD connections header
-    // Iterate though each of the define LPINs
-
-    for( byte lpin  : lcdpin_to_lpin ) {
-
-        if (lpin <16 ) {
-            if (lpin>0) {                       // Note that we ignore 0 here because we use 0 as a placeholder. This is ugly.
-                LCDPCTL0 |= 1 << (lpin-0);
-            }
-        } else if (lpin <32 ) {
-            LCDPCTL1 |= 1 << (lpin-16);
-        } else if (lpin <48 ) {
-            LCDPCTL2 |= 1 << (lpin-32);
-        }
-
-    }
-
-    // LCDCTL0 = LCDSSEL_0 | LCDDIV_7;                     // flcd ref freq is xtclk
-
-    // TODO: Try different clocks and dividers
-
-    // Divide by 2 (so CLK will be 10KHz/2= 5KHz), Very Low Osc, Turn on LCD, 4-mux selected (LCD4MUX also includes LCDSON)
-    // Note this has a bit of a flicker
-    //LCDCTL0 = LCDDIV_2 | LCDSSEL__VLOCLK | LCD4MUX | LCDSON | LCDON  ;
-
-    // TODO: Try different clocks and dividers
-    // Divide by 1 (so CLK will be 10Khz), Very Low Osc, Turn on LCD, 4-mux selected (LCD4MUX also includes LCDSON)
-    //LCDCTL0 = LCDDIV_1 | LCDSSEL__VLOCLK | LCD4MUX | LCDSON | LCDON  ;
-
-    // Divide by 1 (so CLK will be 10Khz), Very Low Osc, Turn on LCD, 4-mux selected (LCD4MUX also includes LCDSON), Low power waveform
-    //LCDCTL0 = LCDDIV_1 | LCDSSEL__VLOCLK | LCD4MUX | LCDSON | LCDON | LCDLP ;
-
-    // LCD using VLO clock, divide by 4 (on 10KHz from VLO) , 4-mux (LCD4MUX also includes LCDSON), low power waveform. No flicker. Squiggle=1.45uA. Count=2.00uA. I guess not worth the flicker for 0.2uA?
-    LCDCTL0 =  LCDSSEL__VLOCLK | LCDDIV__4 | LCD4MUX | LCDLP ;
-
-    // LCD using VLO clock, divide by 5 (on 10KHz from VLO) , 4-mux (LCD4MUX also includes LCDSON), low power waveform. Visible flicker at large view angles. Squiggle=1.35uA. Count=1.83uA
-    //LCDCTL0 =  LCDSSEL__VLOCLK | LCDDIV__5 | LCD4MUX | LCDLP ;
-
-    // LCD using VLO clock, divide by 6 (on 10KHz from VLO) , 4-mux (LCD4MUX also includes LCDSON), low power waveform. VISIBLE FLICKER at 3.5V
-    //LCDCTL0 =  LCDSSEL__VLOCLK | LCDDIV__6 | LCD4MUX | LCDLP ;
-
-
-/*
-    // Divide by 32 (so CLK will be 32768/32 = ~1KHz), Very Low Osc, Turn on LCD, 4-mux selected (LCD4MUX also includes LCDSON)
-    LCDCTL0 = LCDDIV_7 | LCDSSEL__XTCLK | LCD4MUX | LCDSON | LCDON  ;
-*/
-
-
-    // LCD Operation - Mode 3, internal 3.08v, charge pump 256Hz, ~5uA from 3.5V Vcc
-    //LCDVCTL = LCDCPEN | LCDREFEN | VLCD_6 | (LCDCPFSEL0 | LCDCPFSEL1 | LCDCPFSEL2 | LCDCPFSEL3);
-
-
-
-    // LCD Operation - internal V1 regulator=3.32v , charge pump 256Hz
-    // LCDVCTL = LCDCPEN | LCDREFEN | VLCD_12 | (LCDCPFSEL0 | LCDCPFSEL1 | LCDCPFSEL2 | LCDCPFSEL3);
-
-
-    // LCD Operation - Pin R33 is connected to external Vcc, charge pump 256Hz, 1.7uA
-    //LCDVCTL = LCDCPEN | LCDSELVDD | (LCDCPFSEL0 | LCDCPFSEL1 | LCDCPFSEL2 | LCDCPFSEL3);
-
-
-    // LCD Operation - Pin R33 is connected to internal Vcc, no charge pump
-    //LCDVCTL = LCDSELVDD;
-
-
-    // LCD Operation - Pin R33 is connected to external V1, charge pump 256Hz, 1.7uA
-    //LCDVCTL = LCDCPEN | (LCDCPFSEL0 | LCDCPFSEL1 | LCDCPFSEL2 | LCDCPFSEL3);
-
-
-
-    // LCD Operation - Mode 3, internal 3.02v, charge pump 256Hz, voltage reference only on 1/256th of the time. ~4.2uA from 3.5V Vcc
-    //LCDVCTL = LCDCPEN | LCDREFEN | VLCD_7 | (LCDCPFSEL0 | LCDCPFSEL1 | LCDCPFSEL2 | LCDCPFSEL3) | LCDREFMODE;
-
-
-    // LCD Operation - Mode 3, internal 2.78v, charge pump 256Hz, voltage reference only on 1/256th of the time. ~4.2uA from 3.5V Vcc
-    //LCDVCTL = LCDCPEN | LCDREFEN | VLCD_3 | (LCDCPFSEL0 | LCDCPFSEL1 | LCDCPFSEL2 | LCDCPFSEL3) | LCDREFMODE;
-
-
-    // LCD Operation - Mode 3, internal 2.78v, charge pump 256Hz, voltage reference only on 1/256th of the time. ~4.0uA from 3.5V Vcc
-    //LCDVCTL = LCDCPEN | LCDREFEN | VLCD_3 | (LCDCPFSEL0 | LCDCPFSEL1 | LCDCPFSEL2 | LCDCPFSEL3) | LCDREFMODE;
-
-
-    // LCD Operation - All 3 LCD voltages external. When generating all 3 with regulators, we get 2.48uA @ Vcc=3.5V so not worth it.
-    //LCDVCTL = 0;
-
-
-    // LCD Operation - All 3 LCD voltages external. When generating 1 regulators + 3 1M Ohm resistors, we get 2.9uA @ Vcc=3.5V so not worth it.
-    //LCDVCTL = 0;
-
-
-    // LCD Operation - Charge pump enable, Vlcd=Vcc , charge pump FREQ=/256Hz (lowest)  2.5uA - Good for testing without a regulator
-    //LCDVCTL = LCDCPEN |  LCDSELVDD | (LCDCPFSEL0 | LCDCPFSEL1 | LCDCPFSEL2 | LCDCPFSEL3);
-
-
-
-    // LCD Operation - Charge pump enable, Vlcd=external from R33 pin , charge pump FREQ=/64Hz . 2.1uA/180uA  @ Vcc=3.5V . Vlcd=2.8V  from TPS7A0228 no blinking.
-    //LCDVCTL = LCDCPEN |   (LCDCPFSEL0 | LCDCPFSEL1 );
-
-
-
-    #ifdef USE_TPS7A_LCD_BIAS
-
-        /* WINNER for controlled Vlcd - Uses external TSP7A regulator for Vlcd on R33 */
-        // LCD Operation - Charge pump enable, Vlcd=external from R33 pin , charge pump FREQ=/256Hz (lowest). 2.1uA/180uA  @ Vcc=3.5V . Vlcd from TPS7A0228 no blinking.
-        LCDVCTL = LCDCPEN |   (LCDCPFSEL0 | LCDCPFSEL1 | LCDCPFSEL2 | LCDCPFSEL3);
-
-    #else
-
-        // LCD Operation - Mode 3, internal 2.96v, charge pump 256Hz, voltage reference only on 1/256th of the time. ~4.2uA from 3.5V Vcc
-        LCDVCTL = LCDCPEN | LCDREFEN | VLCD_6 | (LCDCPFSEL0 | LCDCPFSEL1 | LCDCPFSEL2 | LCDCPFSEL3) | LCDREFMODE;
-
-
-    #endif
-
-
-    LCDMEMCTL |= LCDCLRM;                                      // Clear LCD memory
-    while ( LCDMEMCTL & LCDCLRM );                             // Wait for clear to complete.
-
-    LCDMEMCTL |= LCDCLRBM;                                     // Clear LCD blink memory
-    while ( LCDMEMCTL & LCDCLRBM );                            // Wait for clear to complete.
-
-    // Configure COMs and SEGs
-
-
-    // TODO: This should be parameterized.
-    LCDCSSEL0 = LCDCSS8 | LCDCSS9 | LCDCSS10 | LCDCSS11 ;     // L8-L11 are the 4 COM pins
-    LCDCSSEL1 = 0x0000;
-    LCDCSSEL2 = 0x0000;
-
-    // L08 = MSP_COM0 = LCD_COM1
-    // L09 = MSP_COM1 = LCD_COM2
-    // L10 = MSP_COM2 = LCD_COM3
-    // L11 = MSP_COM3 = LCD_COM4
-
-    // Once we have selected the COM lines above, we have to connect them in the LCD memory. See Figure 17-2 in MSP430FR4x family guide.
-    // Each nibble in the LCDMx regs holds 4 bits connecting the L pin to one of the 4 COM lines (two L pins per reg)
-    // Note if you change these then you also have to adjust lcd_show_squigle_animation()
-
-    LCDM4 =  0b00100001;  // L09=MSP_COM1  L08=MSP_COM0
-    LCDM5 =  0b10000100;  // L10=MSP_COM3  L11=MSP_COM2
-
-    // Enable per-segment blinking. If the bit is set in LCDMBEM then the segment will blink.
-    // The blink speed is pretty fast, about 10Hz. We use this to indicate which digit is selected
-    // in SETTING mode.
-    // "Settings for LCDMXx and LCDBLKPREx should only be changed while LCDBLKMODx = 00.""
-
-    LCDBLKCTL =
-            LCDBLKPRE__8 |            // Blinking frequency prescaller. This controls how fast the blink is.
-            LCDBLKMOD_1               // Individual control of blinking segments from LCDBM
-    ;
-
-
-    LCDCTL0 |= LCDON;                                           // Turn on LCD
-
-}
-
 
 // Low voltage flag indicates that the RTC has been re-powered and potentially lost its data.
 
@@ -796,13 +630,7 @@ void lock_persistant_data() {
 // if we boot up and detect that we were already running.
 
 // These are displayed
-unsigned int d,h,m,s;
-
-uint8_t  rtc_secs=0;
-uint8_t  rtc_mins=0;
-uint8_t  rtc_hours=0;
-uint16_t rtc_days=0;       // only needs to be able to hold up to 1 century of days since RTC rolls over after 100 years.
-
+volatile unsigned int countdown_d,countdown_h,countdown_m,countdown_s;
 
 // These are for safekeeping in case we reset.
 // Note that these are redundant, but it is faster to keep them in this separate format
@@ -810,7 +638,8 @@ uint16_t rtc_days=0;       // only needs to be able to hold up to 1 century of d
 countdown_time_t countdown_time;
 
 
-// Start calling the clkout vector above on each tick form the RTC
+// Start calling the clkout vector above on each tick form the RTC, starting at next tick
+// note that you might want to call rc3032_zero() first to ensure a full second elapses before first tick.
 
 void enable_rv3032_clkout_interrupt() {
     // Now we enable the interrupt on the RTC CLKOUT pin. For now on we must remember to
@@ -832,6 +661,14 @@ void disable_rv3032_clkout_interrupt() {
 }
 
 
+enum class countdown_display_page_t {
+    HHMMSS,
+    DAYS,
+    BLANK
+};
+
+volatile countdown_display_page_t countdown_display_page;
+
 // Timer interrupt
 // Should fire once per second
 
@@ -843,15 +680,19 @@ __interrupt void clkout_isr(void) {
     RV3032_CLKOUT_PIV;          // Implemented as "MOV.W   &Port_1_2_P2IV,R15"
 
 
-    // We order operations here so that we open at the transition from 1 sec -> 0 sec
-    s--;
+    countdown_s--;
 
-    if (s==0) {
-        if (m==0) {
-            if (h==0) {
-                if (d==0) {
+    if (countdown_s==0) {
+        if (countdown_m==0) {
+            if (countdown_h==0) {
+                if (countdown_d==0) {
 
-                    /// Time to open!!!!
+                    /// Time to unlock!!!!
+
+                    // Show user we are opening
+                    lcd_on();                       // We might have been showing a blank page?
+                    lcd_show_LCDMEM_bank();
+                    lcd_show_open_message();
 
                     // First disable the clock interrupt since will do not want it anymore
 
@@ -863,29 +704,31 @@ __interrupt void clkout_isr(void) {
 
                     // TODO: enter_setting_mode();
 
-                }
-                h=24;
-                d--;
+                    return;
 
-                lcd_show_days_lcdbmem(d);
+                }
+                countdown_h=24;
+                countdown_d--;
+
+                lcd_show_days_lcdbmem(countdown_d);
 
             }
-            m=60;
-            h--;
+            countdown_m=60;
+            countdown_h--;
 
-            *hours_lcdmemw = hours_lcd_words[h];
+            *hours_lcdmemw = hours_lcd_words[countdown_h];
 
         }
-        s=59;           // Yea I know this looks wrong, but we decremented at the top already.
-        m--;
+        countdown_s=59;           // Yea I know this looks wrong, but we decremented at the top already.
+        countdown_m--;
 
-        *mins_lcdmemw = mins_lcd_words[m];
+        *mins_lcdmemw = mins_lcd_words[countdown_m];
 
         // TODO: Update the recovery data here.
 
     }
 
-    *secs_lcdmemw = secs_lcd_words[s];
+    *secs_lcdmemw = secs_lcd_words[countdown_s];
 
     /*
         // Wow, this compiler is not good. Below we can remove a whole instruction with 3 cycles that is completely unnecessary.
@@ -894,6 +737,50 @@ __interrupt void clkout_isr(void) {
         asm("        RLAM.W    #1,r15                ; [] |../tsl-calibre-msp.cpp:1390| ");
         asm("        MOV.W     secs_lcd_words+0(r15),(LCDM0W_L+16) ; [] |../tsl-calibre-msp.cpp:1390|");
     */
+
+
+    // Now update the display page
+
+    if (countdown_display_page==countdown_display_page_t::HHMMSS) {
+        // Turn the LCD back on after it was turned off in the BLANK page
+        lcd_on();
+        // The HHMMSS pattern is displayed from the primary LCD buffer
+        lcd_show_LCDMEM_bank();
+
+        countdown_display_page = countdown_display_page_t::DAYS;                   // TODO: Only show just the HHMMSS page during the final 24h
+
+        *hours_lcdmemw = hours_lcd_words[33];
+
+
+    } else if (countdown_display_page==countdown_display_page_t::DAYS) {
+
+        lcd_show_LCDBMEM_bank();
+        countdown_display_page=countdown_display_page_t::BLANK;
+
+        *hours_lcdmemw = hours_lcd_words[22];
+
+
+    } else {  // if countdown_display_page==countdown_display_page_t::BLANK
+
+        lcd_off();
+        countdown_display_page=countdown_display_page_t::HHMMSS;
+
+        *hours_lcdmemw = hours_lcd_words[11];
+
+    }
+
+
+
+    if (countdown_display_page==countdown_display_page_t::HHMMSS) {
+        *mins_lcdmemw = mins_lcd_words[33];
+
+
+    } else if (countdown_display_page==countdown_display_page_t::DAYS) {
+        *mins_lcdmemw = mins_lcd_words[22];
+
+    } else {  // if countdown_display_page==countdown_display_page_t::BLANK
+        *mins_lcdmemw = mins_lcd_words[11];
+    }
 
 
 }
@@ -1011,6 +898,8 @@ void testSolenoid(unsigned s) {
 }
 
 
+volatile unsigned setting_value;
+
 // Handle interrupt for any switch (buttons and locking trigger)
 
 #pragma vector=SWITCH_CHANGE_VECTOR
@@ -1029,47 +918,13 @@ __interrupt void button_isr(void) {
 
     if ( TBI( capture_interrupt_flags , SWITCH_CHANGE_B ) && TBI( switch_armed_flags , SWITCH_CHANGE_B )  ) {
 
-        // Button armed and pressed
-
-        s++;
-        if (s==100) {
-            s=0;
-        }
-
-        *secs_lcdmemw = secs_lcd_words[s];
-
-        // Make digitplace 0 not blink
-        lcd_write_blank_to_lcdbm( 0 );
-
-        // Make digitplace 5 blink
-        lcd_write_glyph_to_lcdbm( 5 , glyph_8 );
-
-   //     fire_solenoid(1);
-
-
-        testSolenoid(2);
 
     }
 
 
-    // Update minutes on every call so we can see if there are spurious ints happening
-
-    m++;
-    if (m==100) {
-        m=0;
-    }
-
-    *mins_lcdmemw = mins_lcd_words[m];
 
 
     if ( TBI( capture_interrupt_flags , SWITCH_MOVE_B ) && TBI( switch_armed_flags , SWITCH_MOVE_B )  ) {
-
-        h++;
-        if (h==100) {
-            h=0;
-        }
-
-        *hours_lcdmemw = hours_lcd_words[h];
 
         // Make digitplace 5 not blink
         lcd_write_blank_to_lcdbm( 5 );
@@ -1078,71 +933,6 @@ __interrupt void button_isr(void) {
         lcd_write_glyph_to_lcdbm( 0 , glyph_8 );
 
         // testSolenoid(1);
-
-
-
-/*
-        solenoidOn(1);
-        __delay_cycles(1000);
-        solenoidOff(1);
-*/
-
-        solenoidOn(1);
-        __delay_cycles(50000);
-        solenoidOff(1);
-
-
-/*
-
-        for( unsigned i=0; i<100 ; i++ ) {
-
-            solenoidOn(1);
-            __delay_cycles(1000);
-            solenoidOff(1);
-
-            solenoidOn(2);
-            __delay_cycles(9000);
-            solenoidOff(2);
-
-        }
-
-        */
-
-
-/*
-
-
-        for( unsigned i=0; i<1000 ; i++ ) {
-
-            solenoidOn(1);
-            __delay_cycles(100);
-            solenoidOff(1);
-
-            solenoidOn(2);
-            __delay_cycles(100);
-            solenoidOff(2);
-
-            __delay_cycles(800);
-
-        }
-
-*/
-
-//        solenoidOn(1);
-//        solenoidOn(2);
-        __delay_cycles(50000);
- //       solenoidOff(1);
- //       solenoidOff(2);
-
-/*
-        fire_solenoid(2);
-        fire_solenoid(1);
-        fire_solenoid(2);
-        fire_solenoid(1);
-*/
-        //fire_solenoids();
-
-
 
     }
 
@@ -1245,30 +1035,74 @@ void disable_buttons() {
 
 }
 
+// Start counting down!
+// When called, it inits the LCD to the starting time and gets everything ready so that subsequent clkout
+// inetrrupt will update the count. When the count reaches zero, it will open the solenoids and then
+// call end_countdown_mode() and then start_setting_mode().
 
-void locked_mode() {
+/*
+ * You should sleep after calling this with
+ *
+    // Wait for interrupt to fire at next clkout low-to-high change to drive us into the state machine (in either "pin loading" or "time since lanuch" mode)
+    // Could also enable the trigger pin change ISR if we are in RTL mode.
+    // Note if we use LPM3_bits then we burn 18uA versus <2uA if we use LPM4_bits.
+    __bis_SR_register(LPM4_bits | GIE );                // Enter LPM4
+    __no_operation();                                   // For debugger
+ *
+ */
 
-    // First we need to enable the interrupts so we wake up on each rising edge of the RV3032 clkout.
+
+void start_countdown_mode( unsigned days, unsigned hours, unsigned mins, unsigned secs) {
+
+    // Restart the RTC starting... now. This means the first interrupt will happen in 1 second - plenty of time for us to do out init work here.
+    // This also makes things *feel* right so that the second tick is aligned with whatever user action that got us here.
+    rv3032_zero();
+
+    // Init the values we use inside the ISR
+
+    countdown_d = days;
+    countdown_h = hours;
+    countdown_m = mins;
+    countdown_s = secs;
+
+    countdown_display_page = countdown_display_page_t::HHMMSS;
+
+    // Get the first HHMMSS up on the LCDfor the people to look at
+    // Note we start with HHMMSS because we know that will always be a displayed page no matter how much time left.
+
+    *secs_lcdmemw    = secs_lcd_words[countdown_s];
+    *mins_lcdmemw    = secs_lcd_words[countdown_m];
+    *hours_lcdmemw   = secs_lcd_words[countdown_h];
+
+    // Switch to LCD mode where we can manually double buffer. We keep the days page on the second LCDBMEM page.
+    // The blink none mode prevents the blinking hardware from automatically switching the pages on us,
+    // we will do it ourselves.
+    lcd_blinking_mode_none();
+
+    // Now init that second page with the current day count and the label (which will stay there)
+    // Note that the ISR will switch to this page when/if it wants to display it.
+    // The ISR will also update this page if the day count changes
+    lcd_show_day_label_lcdbmem();
+    lcd_show_days_lcdbmem( countdown_d );
+
+    // Now compute the values for the backup counters....
+    // TODO: compute backup counters
+
+    // Enable the interrupts so we wake up on each rising edge of the RV3032 clkout.
     // The RV3032 is always set to 1Hz so this will wake us once per second.
 
     // Now we enable the interrupt on the RTC CLKOUT pin. For now on we must remember to
     // disable it again if we are going to end up in sleepforever mode.
 
     // Clear any pending interrupts from the RV3032 clkout pin and then enable interrupts for the next falling edge
-    // We we should not get a real one for 500ms so we have time to do our stuff
+    // This will start calling the ISR on the next tick.
 
-    CBI( RV3032_CLKOUT_PIFG     , RV3032_CLKOUT_B    );
-    SBI( RV3032_CLKOUT_PIE      , RV3032_CLKOUT_B    );
-
-
-    // Wait for interrupt to fire at next clkout low-to-high change to drive us into the state machine (in either "pin loading" or "time since lanuch" mode)
-    // Could also enable the trigger pin change ISR if we are in RTL mode.
-    // Note if we use LPM3_bits then we burn 18uA versus <2uA if we use LPM4_bits.
-    __bis_SR_register(LPM4_bits | GIE );                // Enter LPM4
-    __no_operation();                                   // For debugger
-
+    enable_rv3032_clkout_interrupt();
 
 }
+
+
+
 
 
 enum mode_t {
@@ -1354,6 +1188,8 @@ void lcd_test() {
     }
 }
 
+
+
 int main( void )
 {
 
@@ -1390,6 +1226,10 @@ int main( void )
     //regulatorTest();
 
 
+    start_countdown_mode(2001, 1 , 1, 10);
+    sleep_with_interrupts();                    // Wait for interrupts to take over.
+
+
     // Simple Solenoid tester
 
     // Set buttons as inputs
@@ -1403,15 +1243,43 @@ int main( void )
     SBI( SWITCH_CHANGE_POUT , SWITCH_CHANGE_B );
     SBI( SWITCH_MOVE_POUT , SWITCH_MOVE_B );
 
+
+    // Set the day page up for now.
+    lcd_blinking_mode_none();
+    lcd_show_day_label_lcdbmem();
+    lcd_show_days_lcdbmem(  200 );
+
+
+    while (1) {
+
+        if (!TBI( SWITCH_CHANGE_PIN , SWITCH_CHANGE_B)) {
+
+            lcd_show_LCDBMEM_bank();
+
+        }
+
+        if (!TBI( SWITCH_MOVE_PIN , SWITCH_MOVE_B)) {
+
+            lcd_show_LCDMEM_bank();
+
+        }
+    }
+
+
     while (1) {
 
         if (!TBI( SWITCH_CHANGE_PIN , SWITCH_CHANGE_B)) {
 
             // Button Down
 
-            h=1; m=0; s=30;
+            countdown_h=0; countdown_m=0; countdown_s=15;
 
             rv3032_zero();
+
+            lcd_show_LCDBMEM_bank();
+
+            while (1);
+
 
             enable_rv3032_clkout_interrupt();
 
@@ -1471,7 +1339,7 @@ int main( void )
 
 
     #warning testing only
-    locked_mode();
+    //locked_mode();
 
     // Start normal operation!
 
@@ -1484,7 +1352,7 @@ int main( void )
             break;
 
         case mode_t::LOCKED:
-            locked_mode();
+            //locked_mode();
             break;
 
         }

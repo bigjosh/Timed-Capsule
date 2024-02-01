@@ -24,12 +24,12 @@ struct lcd_digit_segments_t {
 // Note that on the LCD pinout, COM index starts at 1
 
 constexpr lcd_digit_segments_t lcd_digit_segments[] = {
-    {{ 3, 1}, { 3, 2}, { 3, 3}, { 2, 4}, { 2, 3}, { 2, 1}, { 2, 2}},                          // Digitplace 1 (leftmost digit)
-    {{ 5, 1}, { 5, 2}, { 5, 3}, { 4, 4}, { 4, 3}, { 4, 1}, { 4, 2}},                          // Digitplace 2 (leftmost digit)
-    {{ 7, 1}, { 7, 2}, { 7, 3}, { 6, 4}, { 6, 3}, { 6, 1}, { 6, 2}},                          // Digitplace 3 (leftmost digit)
-    {{ 9, 1}, { 9, 2}, { 9, 3}, { 8, 4}, { 8, 3}, { 8, 1}, { 8, 2}},                          // Digitplace 4 (leftmost digit)
-    {{11, 1}, {11, 2}, {11, 3}, {10, 4}, {10, 3}, {10, 1}, {10, 2}},                          // Digitplace 5 (leftmost digit)
-    {{13, 1}, {13, 2}, {13, 3}, {12, 4}, {12, 3}, {12, 1}, {12, 2}},                          // Digitplace 6 (leftmost digit)
+    {{ 3, 1}, { 3, 2}, { 3, 3}, { 2, 4}, { 2, 3}, { 2, 1}, { 2, 2}},                          // Digitplace 0 (leftmost digit)
+    {{ 5, 1}, { 5, 2}, { 5, 3}, { 4, 4}, { 4, 3}, { 4, 1}, { 4, 2}},
+    {{ 7, 1}, { 7, 2}, { 7, 3}, { 6, 4}, { 6, 3}, { 6, 1}, { 6, 2}},
+    {{ 9, 1}, { 9, 2}, { 9, 3}, { 8, 4}, { 8, 3}, { 8, 1}, { 8, 2}},
+    {{11, 1}, {11, 2}, {11, 3}, {10, 4}, {10, 3}, {10, 1}, {10, 2}},
+    {{13, 1}, {13, 2}, {13, 3}, {12, 4}, {12, 3}, {12, 1}, {12, 2}},                          // Digitplace 5 (rightmost digit)
 
 };
 

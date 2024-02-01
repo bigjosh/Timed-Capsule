@@ -437,7 +437,6 @@ void lcd_show_digit_f( char *lcd_base , const uint8_t pos, const byte d ) {
 
 
 
-
 // Print the current days value into the LCDBMEM buffer
 // Currently leading spaces, but could be leading 0s
 // TODO: This could be optimized to use the precomputed 2-digit tables, but is it worth it?
@@ -445,59 +444,35 @@ void lcd_show_digit_f( char *lcd_base , const uint8_t pos, const byte d ) {
 void lcd_show_days_lcdbmem( const unsigned days ) {
 
     unsigned x=days;
+    unsigned pow = 10000;
+    unsigned place=5;
 
-    if (x>10000) {
+    // Pad with spaces on left
+    while (pow>x) {
 
-        unsigned y = x/10000;
-        lcd_show_digit_f( LCDBMEM , 5 , x);
+        lcd_show_f(LCDBMEM , place, glyph_SPACE);
+        place--;
+        pow=pow/10;
 
-        x = x - (y*10000);
-    } else {
-        lcd_write_glyph_to_lcdmem( LCDBMEM , 5 , glyph_SPACE);
     }
 
 
-    if (x>1000) {
+    while (pow>0) {
+        unsigned y = x / pow;
+        lcd_show_digit_f( LCDBMEM , place , y);
+        place--;
 
-        unsigned y = x/1000;
-        lcd_show_digit_f(LCDBMEM , 4 , x);
+        x = x - (y * pow);
+        pow = pow / 10;
 
-        x = x - (y*1000);
-    } else {
-        lcd_write_glyph_to_lcdmem( LCDBMEM , 4 , glyph_SPACE);
     }
 
-
-    if (x>100) {
-
-        unsigned y = x/100;
-        lcd_show_digit_f(LCDBMEM , 3 , x);
-
-        x = x - (y*100);
-    } else {
-        lcd_write_glyph_to_lcdmem( LCDBMEM , 3 , glyph_SPACE);
-    }
-
-
-    if (x>10) {
-
-        unsigned y = x/10;
-        lcd_show_digit_f(LCDBMEM , 2 , x);
-
-        x = x - (y*10);
-    } else {
-        lcd_write_glyph_to_lcdmem( LCDBMEM , 2 , glyph_SPACE);
-    }
-
-
-    // Always show rightmost digit even if 0
-    lcd_show_digit_f(LCDBMEM , 1 , x);
 
 }
 
 
 void lcd_show_day_label_lcdbmem() {
-    lcd_write_glyph_to_lcdmem( LCDBMEM , 0 , glyph_d );
+    lcd_show_f( LCDBMEM , 0, glyph_d);
 }
 
 
@@ -507,6 +482,303 @@ inline void lcd_show_fast_secs( uint8_t secs ) {
 
 }
 
+
+void initLCD() {
+
+    // Configure LCD pins
+    SYSCFG2 |= LCDPCTL;                                 // LCD R13/R23/R33/LCDCAP0/LCDCAP1 pins enabled
+
+    LCDBLKCTL = 0x00;           // "Settings for LCDMXx and LCDBLKPREx should only be changed while LCDBLKMODx = 00."
+                                // And note that this register is NOT cleared on reset, so we clear it here.
+
+    // Enable LCD pins as defined in the LCD connections header
+    // Iterate though each of the define LPINs
+
+    for( byte lpin  : lcdpin_to_lpin ) {
+
+        if (lpin <16 ) {
+            if (lpin>0) {                       // Note that we ignore 0 here because we use 0 as a placeholder. This is ugly.
+                LCDPCTL0 |= 1 << (lpin-0);
+            }
+        } else if (lpin <32 ) {
+            LCDPCTL1 |= 1 << (lpin-16);
+        } else if (lpin <48 ) {
+            LCDPCTL2 |= 1 << (lpin-32);
+        }
+
+    }
+
+    // LCDCTL0 = LCDSSEL_0 | LCDDIV_7;                     // flcd ref freq is xtclk
+
+    // TODO: Try different clocks and dividers
+
+    // Divide by 2 (so CLK will be 10KHz/2= 5KHz), Very Low Osc, Turn on LCD, 4-mux selected (LCD4MUX also includes LCDSON)
+    // Note this has a bit of a flicker
+    //LCDCTL0 = LCDDIV_2 | LCDSSEL__VLOCLK | LCD4MUX | LCDSON | LCDON  ;
+
+    // TODO: Try different clocks and dividers
+    // Divide by 1 (so CLK will be 10Khz), Very Low Osc, Turn on LCD, 4-mux selected (LCD4MUX also includes LCDSON)
+    //LCDCTL0 = LCDDIV_1 | LCDSSEL__VLOCLK | LCD4MUX | LCDSON | LCDON  ;
+
+    // Divide by 1 (so CLK will be 10Khz), Very Low Osc, Turn on LCD, 4-mux selected (LCD4MUX also includes LCDSON), Low power waveform
+    //LCDCTL0 = LCDDIV_1 | LCDSSEL__VLOCLK | LCD4MUX | LCDSON | LCDON | LCDLP ;
+
+    // LCD using VLO clock, divide by 4 (on 10KHz from VLO) , 4-mux (LCD4MUX also includes LCDSON), low power waveform. No flicker. Squiggle=1.45uA. Count=2.00uA. I guess not worth the flicker for 0.2uA?
+    LCDCTL0 =  LCDSSEL__VLOCLK | LCDDIV__4 | LCD4MUX | LCDLP ;
+
+    // LCD using VLO clock, divide by 5 (on 10KHz from VLO) , 4-mux (LCD4MUX also includes LCDSON), low power waveform. Visible flicker at large view angles. Squiggle=1.35uA. Count=1.83uA
+    //LCDCTL0 =  LCDSSEL__VLOCLK | LCDDIV__5 | LCD4MUX | LCDLP ;
+
+    // LCD using VLO clock, divide by 6 (on 10KHz from VLO) , 4-mux (LCD4MUX also includes LCDSON), low power waveform. VISIBLE FLICKER at 3.5V
+    //LCDCTL0 =  LCDSSEL__VLOCLK | LCDDIV__6 | LCD4MUX | LCDLP ;
+
+
+/*
+    // Divide by 32 (so CLK will be 32768/32 = ~1KHz), Very Low Osc, Turn on LCD, 4-mux selected (LCD4MUX also includes LCDSON)
+    LCDCTL0 = LCDDIV_7 | LCDSSEL__XTCLK | LCD4MUX | LCDSON | LCDON  ;
+*/
+
+
+    // LCD Operation - Mode 3, internal 3.08v, charge pump 256Hz, ~5uA from 3.5V Vcc
+    //LCDVCTL = LCDCPEN | LCDREFEN | VLCD_6 | (LCDCPFSEL0 | LCDCPFSEL1 | LCDCPFSEL2 | LCDCPFSEL3);
+
+
+
+    // LCD Operation - internal V1 regulator=3.32v , charge pump 256Hz
+    // LCDVCTL = LCDCPEN | LCDREFEN | VLCD_12 | (LCDCPFSEL0 | LCDCPFSEL1 | LCDCPFSEL2 | LCDCPFSEL3);
+
+
+    // LCD Operation - Pin R33 is connected to external Vcc, charge pump 256Hz, 1.7uA
+    //LCDVCTL = LCDCPEN | LCDSELVDD | (LCDCPFSEL0 | LCDCPFSEL1 | LCDCPFSEL2 | LCDCPFSEL3);
+
+
+    // LCD Operation - Pin R33 is connected to internal Vcc, no charge pump
+    //LCDVCTL = LCDSELVDD;
+
+
+    // LCD Operation - Pin R33 is connected to external V1, charge pump 256Hz, 1.7uA
+    //LCDVCTL = LCDCPEN | (LCDCPFSEL0 | LCDCPFSEL1 | LCDCPFSEL2 | LCDCPFSEL3);
+
+
+
+    // LCD Operation - Mode 3, internal 3.02v, charge pump 256Hz, voltage reference only on 1/256th of the time. ~4.2uA from 3.5V Vcc
+    //LCDVCTL = LCDCPEN | LCDREFEN | VLCD_7 | (LCDCPFSEL0 | LCDCPFSEL1 | LCDCPFSEL2 | LCDCPFSEL3) | LCDREFMODE;
+
+
+    // LCD Operation - Mode 3, internal 2.78v, charge pump 256Hz, voltage reference only on 1/256th of the time. ~4.2uA from 3.5V Vcc
+    //LCDVCTL = LCDCPEN | LCDREFEN | VLCD_3 | (LCDCPFSEL0 | LCDCPFSEL1 | LCDCPFSEL2 | LCDCPFSEL3) | LCDREFMODE;
+
+
+    // LCD Operation - Mode 3, internal 2.78v, charge pump 256Hz, voltage reference only on 1/256th of the time. ~4.0uA from 3.5V Vcc
+    //LCDVCTL = LCDCPEN | LCDREFEN | VLCD_3 | (LCDCPFSEL0 | LCDCPFSEL1 | LCDCPFSEL2 | LCDCPFSEL3) | LCDREFMODE;
+
+
+    // LCD Operation - All 3 LCD voltages external. When generating all 3 with regulators, we get 2.48uA @ Vcc=3.5V so not worth it.
+    //LCDVCTL = 0;
+
+
+    // LCD Operation - All 3 LCD voltages external. When generating 1 regulators + 3 1M Ohm resistors, we get 2.9uA @ Vcc=3.5V so not worth it.
+    //LCDVCTL = 0;
+
+
+    // LCD Operation - Charge pump enable, Vlcd=Vcc , charge pump FREQ=/256Hz (lowest)  2.5uA - Good for testing without a regulator
+    //LCDVCTL = LCDCPEN |  LCDSELVDD | (LCDCPFSEL0 | LCDCPFSEL1 | LCDCPFSEL2 | LCDCPFSEL3);
+
+
+
+    // LCD Operation - Charge pump enable, Vlcd=external from R33 pin , charge pump FREQ=/64Hz . 2.1uA/180uA  @ Vcc=3.5V . Vlcd=2.8V  from TPS7A0228 no blinking.
+    //LCDVCTL = LCDCPEN |   (LCDCPFSEL0 | LCDCPFSEL1 );
+
+
+
+    #ifdef USE_TPS7A_LCD_BIAS
+
+        /* WINNER for controlled Vlcd - Uses external TSP7A regulator for Vlcd on R33 */
+        // LCD Operation - Charge pump enable, Vlcd=external from R33 pin , charge pump FREQ=/256Hz (lowest). 2.1uA/180uA  @ Vcc=3.5V . Vlcd from TPS7A0228 no blinking.
+        LCDVCTL = LCDCPEN |   (LCDCPFSEL0 | LCDCPFSEL1 | LCDCPFSEL2 | LCDCPFSEL3);
+
+    #else
+
+        // LCD Operation - Mode 3, internal 2.96v, charge pump 256Hz, voltage reference only on 1/256th of the time. ~4.2uA from 3.5V Vcc
+        LCDVCTL = LCDCPEN | LCDREFEN | VLCD_6 | (LCDCPFSEL0 | LCDCPFSEL1 | LCDCPFSEL2 | LCDCPFSEL3) | LCDREFMODE;
+
+
+    #endif
+
+
+    LCDMEMCTL |= LCDCLRM;                                      // Clear LCD memory
+    while ( LCDMEMCTL & LCDCLRM );                             // Wait for clear to complete.
+
+    LCDMEMCTL |= LCDCLRBM;                                     // Clear LCD blink memory
+    while ( LCDMEMCTL & LCDCLRBM );                            // Wait for clear to complete.
+
+    // Configure COMs and SEGs
+
+
+    // TODO: This should be parameterized.
+    LCDCSSEL0 = LCDCSS8 | LCDCSS9 | LCDCSS10 | LCDCSS11 ;     // L8-L11 are the 4 COM pins
+    LCDCSSEL1 = 0x0000;
+    LCDCSSEL2 = 0x0000;
+
+    // L08 = MSP_COM0 = LCD_COM1
+    // L09 = MSP_COM1 = LCD_COM2
+    // L10 = MSP_COM2 = LCD_COM3
+    // L11 = MSP_COM3 = LCD_COM4
+
+    // Once we have selected the COM lines above, we have to connect them in the LCD memory. See Figure 17-2 in MSP430FR4x family guide.
+    // Each nibble in the LCDMx regs holds 4 bits connecting the L pin to one of the 4 COM lines (two L pins per reg)
+    // Note if you change these then you also have to adjust lcd_show_squigle_animation()
+
+    // Note if you change these, you also need to change the LCDBM assignments in the blinking mode change functons
+
+    LCDM4 =  0b00100001;  // L09=MSP_COM1  L08=MSP_COM0
+    LCDM5 =  0b10000100;  // L10=MSP_COM3  L11=MSP_COM2
+
+    // Enable per-segment blinking. If the bit is set in LCDMBEM then the segment will blink.
+    // The blink speed is pretty fast, about 10Hz. We use this to indicate which digit is selected
+    // in SETTING mode.
+    // "Settings for LCDMXx and LCDBLKPREx should only be changed while LCDBLKMODx = 00.""
+
+    LCDBLKCTL =
+            LCDBLKPRE__8 |            // Blinking frequency prescaller. This controls how fast the blink is, about 2Hz.
+            LCDBLKMOD_0               // Blinking disabled
+    ;
+
+
+    LCDCTL0 |= LCDON;                                           // Turn on LCD
+
+}
+
+
+
+/*
+ * LCD segments on. This bit supports flashing LCD applications by turning off all
+    segment lines, while leaving the LCD timing generator and R33 enabled.
+    0b = All LCD segments are off.
+    1b = All LCD segments are enabled and on or off according to their
+    corresponding memory location.
+ */
+
+// Blank all LCD segments in hardware
+
+void lcd_off() {
+    LCDCTL0 &= ~  LCDSON;       // TODO: This would be faster with a direct immediate write
+}
+
+// Unblank all LCD segments in hardware
+
+void lcd_on() {
+    LCDCTL0 |=  LCDSON;         // TODO: This would be faster with a direct immediate write
+}
+
+
+/*
+ * Select LCD memory registers for display
+    When LCDBLKMODx = 00, LCDDISP can be set by software.
+    The bit is cleared in LCDBLKMODx = 01 and LCDBLKMODx = 10 or if a mux
+    mode >=5 is selected and cannot be changed by software.
+    When LCDBLKMODx = 11, this bit reflects the currently displayed memory but
+    cannot be changed by software. When returning to LCDBLKMODx = 00 the bit is
+    cleared.
+    0b = Display content of LCD memory registers LCDMx
+    1b = Display content of LCD blinking memory registers LCDBMx
+ */
+
+
+// Show the main mem bank on LCD
+void lcd_show_LCDMEM_bank() {
+    LCDMEMCTL &= ~LCDDISP;              // TODO: Make faster with direct write
+}
+
+// Show the secondary (LCDBMEM) bank on the lcd
+void lcd_show_LCDBMEM_bank() {
+    LCDMEMCTL |= LCDDISP;               //  TODO: Make faster with direct write
+}
+
+/*
+ * Changing blinking modes is slightly weird on this chip since different modes have different requirements for the LCDBMEM addresses used by the COM pins
+ *
+ *
+    Blinking Mode LCDBLKMODx Description
+    00b          Blinking disabled, the user can select which memory to be displayed by setting LCDDISP bit in LCDMEMCTL register
+                 LCDMx: the COM related configuration bits should be set accordingly
+                 LCDBMx: the COM related configuration bits should be set according to LCDMx configuration
+    01b          Blinking of individual segments as enabled in blinking memory register LCDBMx
+                 LCDMx: the COM related memory bits should be set accordingly
+                 LCDBMx: the COM related memory bits should be set to 0
+    10b          Blinking of all segments
+                 LCDMx: the COM related memory bits should be set accordingly
+                 LCDBMx: this memory is not used in this blinking mode, no programming of LCDBMx necessary
+    11b          Switching between display contents as stored in LCDMx and LCDBMx memory registers
+                 LCDMx: the COM related memory bits should be set accordingly
+                 LCDBMx: the COM related memory bits should be set according to LCDMx configuration
+
+ *
+ *
+ */
+
+
+// Put the LCD into no blinking mode. Note that in this mode you can use the bank select functions to pick which pages is shown.
+void lcd_blinking_mode_none() {
+
+    // "Settings for LCDMXx and LCDBLKPREx should only be changed while LCDBLKMODx = 00."
+    LCDBLKCTL &= ~LCDBLKMOD_3;       // Clear the LCDBLKMODx bits. This seems superfluous.
+
+    // "LCDBMx: the COM related configuration bits should be set according to LCDMx configuration"
+    LCDBM4 =  LCDM4;            // TODO: These could be faster, and do we really need them? Doesn't seem to actually matter.
+    LCDBM5 =  LCDM5;
+
+    LCDBLKCTL = LCDBLKPRE__64 | LCDBLKMOD_0;       // Clock prescaler for blink rate, "Blinking of individual segments as enabled in blinking memory register LCDBMx."
+}
+
+// Put the LCD into blinking mode where any segment in LCDBMEM blinks
+void lcd_blinking_mode_segments() {
+
+    // "Settings for LCDMXx and LCDBLKPREx should only be changed while LCDBLKMODx = 00."
+    LCDBLKCTL &= ~LCDBLKMOD_3;       // Clear the LCDBLKMODx bits
+
+    // "LCDBMx: the COM related memory bits should be set to 0"
+    LCDBM4 =  0x00;            // TODO: Do we really need them? Doesn't seem to actually matter.
+    LCDBM5 =  0x00;
+
+    LCDBLKCTL = LCDBLKPRE__64 | LCDBLKMOD_1;       // Clock prescaler for blink rate, "Blinking of individual segments as enabled in blinking memory register LCDBMx."
+}
+
+// Put the LCD into blinking mode where all segments blink
+void lcd_blinking_mode_all() {
+
+    // "Settings for LCDMXx and LCDBLKPREx should only be changed while LCDBLKMODx = 00."
+    LCDBLKCTL &= ~LCDBLKMOD_3;       // Clear the LCDBLKMODx bits
+
+
+    // "LCDBMx: this memory is not used in this blinking mode, no programming of LCDBMx necessary"
+
+    LCDBLKCTL = LCDBLKPRE__64 | LCDBLKMOD_2;       // Clock prescaler for blink rate, "Blinking of all segments as enabled in blinking memory register LCDBMx."
+}
+
+// Put the LCD into double page buffer mode where it will automatically switch between LCDMEM and LCDBMEM
+// Sets the DIV to the max of 512 so will only blink about once every 5 secs. This is because we will actually do the switching manually in the ISR.
+// You can reset the counter so that it never switches automatically by calling  lcd_blinking_mode_doublebuffer_reset_timer()
+
+void lcd_blinking_mode_doublebuffer() {
+
+    // "Settings for LCDMXx and LCDBLKPREx should only be changed while LCDBLKMODx = 00."
+    LCDBLKCTL &= ~LCDBLKMOD_3;       // Clear the LCDBLKMODx bits. Also clears the DIV counter.
+
+    // "LCDBMx: the COM related memory bits should be set according to LCDMx configuration"
+    LCDBM4 =  LCDM4;            // TODO: These could be faster, and do we really need them? Doesn't seem to actually matter.
+    LCDBM5 =  LCDM5;
+
+    LCDBLKCTL = LCDBLKPRE__512 | LCDBLKMOD_3;       // Clock prescaler for blink rate, "11b = Switching between display contents as stored in LCDMx and LCDBMx memory registers."
+}
+
+void lcd_blinking_mode_doublebuffer_reset_timer() {
+
+    // "The divider generating the blinking frequency fBLINK is reset when LCDBLKMODx = 00."
+    LCDBLKCTL = LCDBLKPRE__512 | LCDBLKMOD_0;      // Clear the DIV counter
+    LCDBLKCTL = LCDBLKPRE__512 | LCDBLKMOD_3;       // Clock prescaler for blink rate, "11b = Switching between display contents as stored in LCDMx and LCDBMx memory registers."
+
+}
 
 
 
@@ -735,6 +1007,26 @@ void lcd_show_load_pin_animation(unsigned int step) {
 }
 
 
+constexpr glyph_segment_t open_message[] = {
+                                                   glyph_SPACE,
+                                                   glyph_O,
+                                                   glyph_P,
+                                                   glyph_E,
+                                                   glyph_n,
+                                                   glyph_SPACE,
+};
+
+// Show " OPEn"
+void lcd_show_open_message() {
+
+    for( byte i=0; i<DIGITPLACE_COUNT; i++ ) {
+        lcd_show_f(  i , open_message[ DIGITPLACE_COUNT - 1- i] );        // digit place 12 is rightmost, so reverse order for text
+    }
+}
+
+
+
+
 constexpr glyph_segment_t first_start_message[] = {
                                                    glyph_F,
                                                    glyph_i,
@@ -755,83 +1047,6 @@ void lcd_show_first_start_message() {
 
     for( byte i=0; i<DIGITPLACE_COUNT; i++ ) {
         lcd_show_f(  i , first_start_message[ DIGITPLACE_COUNT - 1- i] );        // digit place 12 is rightmost, so reverse order for text
-    }
-}
-
-// " -Armning-  "
-
-constexpr glyph_segment_t arming_message[] = {
-                                                   glyph_SPACE,
-                                                   glyph_SPACE,
-                                                   glyph_A,
-                                                   glyph_r,
-                                                   glyph_m1,
-                                                   glyph_m2,
-                                                   glyph_i,
-                                                   glyph_n,
-                                                   glyph_g,
-                                                   glyph_SPACE,
-                                                   glyph_SPACE,
-                                                   glyph_SPACE,
-};
-
-// Show "Arming"
-void lcd_show_arming_message() {
-
-    for( byte i=0; i<DIGITPLACE_COUNT; i++ ) {
-        lcd_show_f(  i , arming_message[ DIGITPLACE_COUNT - 1- i] );        // digit place 12 is rightmost, so reverse order for text
-    }
-}
-
-// CLOCK GOOd
-
-constexpr glyph_segment_t clock_good_message[] = {
-                                                   glyph_SPACE,
-                                                   glyph_C,
-                                                   glyph_L,
-                                                   glyph_O,
-                                                   glyph_C,
-                                                   glyph_K,
-                                                   glyph_SPACE,
-                                                   glyph_g,
-                                                   glyph_O,
-                                                   glyph_O,
-                                                   glyph_d,
-                                                   glyph_SPACE,
-};
-
-// Show "CLOCK GOOd"
-void lcd_show_clock_good_message() {
-
-    for( byte i=0; i<DIGITPLACE_COUNT; i++ ) {
-        lcd_show_f(  i , clock_good_message[ DIGITPLACE_COUNT - 1- i] );        // digit place 12 is rightmost, so reverse order for text
-    }
-}
-
-
-
-// CLOCK LOSt
-
-constexpr glyph_segment_t clock_lost_message[] = {
-                                                   glyph_SPACE,
-                                                   glyph_C,
-                                                   glyph_L,
-                                                   glyph_O,
-                                                   glyph_C,
-                                                   glyph_K,
-                                                   glyph_SPACE,
-                                                   glyph_L,
-                                                   glyph_O,
-                                                   glyph_S,
-                                                   glyph_t,
-                                                   glyph_SPACE,
-};
-
-// Show "CLOCK LOSt"
-void lcd_show_clock_lost_message() {
-
-    for( byte i=0; i<DIGITPLACE_COUNT; i++ ) {
-        lcd_show_f(  i , clock_lost_message[ DIGITPLACE_COUNT - 1- i] );        // digit place 12 is rightmost, so reverse order for text
     }
 }
 

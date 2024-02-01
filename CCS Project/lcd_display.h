@@ -97,17 +97,6 @@ void lcd_show_first_start_message();
 // Show the message "Error cOde X" on the lcd.
 void lcd_show_errorcode( byte code  );
 
-// Show the message "bAtt Error X" on the lcd.
-void lcd_show_batt_errorcode( byte code  );
-
-// Show "-Arming-"
-void lcd_show_arming_message();
-
-// Show "CLOCK GOOd"
-void lcd_show_clock_good_message();
-
-// Show "CLOCK LOSt"
-void lcd_show_clock_lost_message();
 
 // Every 100 days
 void lcd_show_centesimus_dies_message();
@@ -130,6 +119,39 @@ void lcd_show_day_label_lcdbmem();
 // Currently leading spaces, but could be leading 0s
 
 void lcd_show_days_lcdbmem( const unsigned days );
+
+
+// Init the LCD. Clears memory.
+void initLCD();
+
+
+// Blank all LCD segments in hardware
+void lcd_off();
+// Unblank all LCD segments in hardware
+void lcd_on();
+
+
+// Show the main mem bank on LCD
+void lcd_show_LCDMEM_bank();
+
+// Show the secondary (LCDBMEM) bank on the lcd
+void lcd_show_LCDBMEM_bank();
+
+
+// Put the LCD into no blinking mode
+void lcd_blinking_mode_none();
+
+// Put the LCD into blinking mode where any segment in LCDBMEM blinks
+void lcd_blinking_mode_segments();
+
+// Put the LCD into blinking mode where all segements blink
+void lcd_blinking_mode_all();
+
+// Put the LCD into double page buffer mode where you can switch beteween LCDMEM and LCDBMEM
+void lcd_blinking_mode_doublebuffer();
+
+// Show " OPEn"
+void lcd_show_open_message();
 
 
 #endif /* LCD_DISPLAY_H_ */

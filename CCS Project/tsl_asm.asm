@@ -32,15 +32,15 @@
 ; 	secs		   - elapsed seconds
 
 			.ref 	secs_lcd_words			; - table of prerendered values to write to the seconds word in LCDMEM (one entry for each second 0-59)
-			.ref	rtc_secs				; - elapsed seconds starting point, read from the RTC in the startup C code
+			.ref	countdown_s				; - elapsed seconds starting point, read from the RTC in the startup C code
 
 			.ref 	mins_lcd_words			; - table of prerendered values to write to the minutes word in LCDMEM (one entry for each min 0-59)
-			.ref	rtc_mins				; - elapsed minutes starting point, read from the RTC in the start up C code
+			.ref	countdown_m				; - elapsed minutes starting point, read from the RTC in the start up C code
 
 			; Unforntunately hours digits can not be on consecutive LPINs and we are out of call-saved registers
 			; anyway so we update the hours digits seporately using these procomuted segment byte arrays
 			.ref 	hours_lcd_words
-			.ref	rtc_hours
+			.ref	countdown_h
 
 ; 17us when minutes do not change (!)
 
@@ -63,7 +63,7 @@ TSL_MODE_BEGIN:
 			MOV.W		#(secs_lcd_words+2*60),R5	; R5=1 byte past end of the secs table
 
 			; R6 = compute our location in the table based on current seconds
-			MOV.B		&rtc_secs,R6				; Start with seconds. Note that secs are stored as a byte on the C side.
+			MOV.B		&countdown_s,R6				; Start with seconds. Note that secs are stored as a byte on the C side.
 			ADD.W		R6,R6						; Double it so it is now a word pointer
 			ADD.W		R4,R6						; R6=Pointer to location of next sec in secs table
 
@@ -72,7 +72,7 @@ TSL_MODE_BEGIN:
 			MOV.W		#(mins_lcd_words+2*60),R8	; R8=1 byte past end of the mins table
 
 			; R9= compute our location in the table based on current minutes
-			MOV.B		&rtc_mins,R9				; Start with mins. Note that these are stored as a byte on the C side.
+			MOV.B		&countdown_m,R9				; Start with mins. Note that these are stored as a byte on the C side.
 			ADD.W		R9,R9						; Double it so it is now a word pointer
 			ADD.W		R7,R9						; R9=location of next min in mins table
 
@@ -80,7 +80,7 @@ TSL_MODE_BEGIN:
 			; the straight value there and then compute everything else each update.
 			; thats OK since hours update only 1/3600th of the time. If we really wanted we could
 			; hand-code this all in ASM and then be able to use all regs, but not worth it.
-			MOV.B		&rtc_hours,R10					;  R10=Hours
+			MOV.B		&countdown_h,R10					;  R10=Hours
 
 			; move the vector to point to our actual updater now that all the registers are set
 			mov.w	#TSL_MODE_ISR, &ram_vector_PORT1
