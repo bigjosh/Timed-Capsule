@@ -23,8 +23,8 @@ The Timed Capsule is a commitment device. You put something in the capsule and s
 * RV3032-C7 RTC for precision timekeeping
 * 7-digit, dynamic LCD glass 
 * 4x Energizer Ultimate Lithium AA batteries
+* Solenoids which pull decicively at 6V
 * Optional TPS7A0230 3V regulator for generating LCD bias voltage
-* The solenoid which pulls decicively at 6V
 
 ## Method of Operation
 
@@ -53,7 +53,6 @@ Durring the countdown, the LCD  will rotate though...
 
 1. Days remaining as 'xxxxxd`.
 2. Hours, minutes, and seconds until the current day is done as `HHMMSS`.
-3. A blank screen.
 
 ... stopping on each screen for 1 second. 
 
@@ -68,33 +67,37 @@ Since the timer automatically resets to 1 hour after each unlock attempt, you ca
 
 ## Interesting twists
 
-It is hard to find common solenoids that definitively actuate at voltages/currents available with our AA batteries, so we picked the solenoids carefully and use an extra pair AA batteries soley for a voltage boost at the moment we pull them. You might suggest using either a boost inductor-based boost circuit or a capacitor-based charge pump to avoid ths, but it would require some very,very big parts to store enough energy to be useful here (we can not use electrolitic caps since they will likely fail over the decades). It is hard to compete with the density of chemical energy! You might also suggest using a motor and gears to do the actuation (this is how most battery powered door locks do it), but it is hard to imagine gears that stay reliable after sitting still for 50 years. 
+### Solenoids
 
-We are using the MSP430's Very Low Power Oscilator (VLO) to drive the LCD since it is actually lower power than the 32Khz XTAL. It is also slower, so more power savings. 
+It is hard to find common solenoids that definitively actuate at voltages/currents available with our AA batteries, so we picked the solenoids carefully and use an extra pair AA batteries soley for a voltage boost at the moment we pull them. You might suggest using either a boost inductor-based boost circuit or a capacitor-based charge pump to avoid ths, but it would require some very big parts to store enough energy to be useful here (we can not use electrolitic caps since they will likely fail over the decades). It is hard to compete with the density of chemical energy! You might also suggest using a motor and gears to do the actuation (this is how most battery powered door locks do it), but it is hard to imagine gears that stay reliable after sitting still for 50 years. 
 
-We do NOT use the MSP430's "LPMx.5" extra low power modes since they end up using more power than the "LPM4" mode that we are using. This is becuase it takes 250us to wake from the "x.5" modes and durring this time, the MCU pulls about 200uA. Since we wake 2 times per second, this is just not worth it. If we only woke every, say, 15 seconds then we could likely save ~0.3uA by using the "x.5" modes. 
+### Oscilator
 
-We use the RTC's CLKOUT push-pull signal directly into an MSP430 io pin. This would be a problem durring battery changes since the RTC would try to power  
-the MSP430 though the protection diodes durring battery changes. We depend on the fact that the RTC will go into backup mode durring battery changes, which will
-float the CLKOUT pin. 
+We are using the MSP430's Very Low Power Oscilator (VLO) to drive the LCD since it is actually lower power than the 32Khz XTAL. It is also slower, so more power savings. The internal VLO also empreically uses less total power than using the RV3032 clkout to drive the MSP430's LCD clock, which is supprising. 
 
-Using CLKOUT also means that we get 2 interrupts each second (one on rising, one falling edge). We quickly ignore every other one in the ISR. It would seem more power efficient to use the periodic timer function of the RTC to generate a 0.5Hz output, but enabling the periodic timer uses an additional 0.2uA (undocumented!), so not worth it. 
+### MSP430 LPMx.5 modes
 
-To make LCD updates as power efficient as possible, we precomute the LCDMEM values for every second and minute update and store them in tables. Because we were careful to put all the segments making up both seconds digits into a single word of memory (minutes also), we can do a full update with a single 16 bit write. We further optimize but keeping the pointer to the next table lookup in a register and using the MSP430's post-decrement addressing mode to also increment the pointer for free (zero cycles). This lets us execute a full update on non-rollover seconds in only 4 instructions (not counting ISR overhead). This code is here...
+We do NOT use the MSP430's "LPMx.5" extra low power modes since they end up using more power than the "LPM4" mode that we are using. This is becuase it takes 250us to wake from the "x.5" modes and durring this time, the MCU pulls about 200uA. Since we wake every second, this is just not worth it. If we only woke every, say, 15 seconds then we could likely save ~0.3uA by using the "x.5" modes.
+
+### LCD software optimications
+
+To make LCD updates as power efficient as possible, we precomute the LCDMEM values for every second and minute update and store them in tables. Because we were careful to put all the segments making up both seconds digits into a single word of memory (minutes and hours also), we can do a full update with a single 16 bit write. We further optimize by keeping the pointer to the next table lookup in a register and using the MSP430's post-decrement addressing mode to also increment the pointer for free (zero cycles). This lets us execute a full update on non-rollover seconds in only 4 instructions (not counting ISR overhead). This code is here...
 [CCS%20Project/tsl_asm.asm#L91](CCS%20Project/tsl_asm.asm#L91)
 
 We also further reduce power using the MSP430's LCD buffer hardware. We keep the "days" display in one LCD buffer and the "HHMMSS" in the the other buffer. This way we only need to update one bit to switch between the two and therefore only end up needing to write to the "days" page once per day to update the day count. 
 
 Finally, we use the MSP430's blinking segment buffer to create the cursor in setting mode. Since this is all done in hardware, the MCU is always sleeping in setting mode
-except immedeately after a button is pushed or the trigger is activated. 
+except immedeately after a button is pushed or the trigger is activated.
 
-The 100 ohm resistor between the battery and the Vcc pin of the MCU is needed to create a low pass filter. This slows down the voltage changes when the solenoids turn on and off (these solenoids pull more than 1 amp). The MCU can brown out if it sees a change on the Vcc pin faster than 1V/us. The maximum current the MCU can pull is only about 2mA so we only lose 0.2 volts of power supply voltage worst case. 
+### Power supply glitch filter
 
-## No power mode
+The 100 ohm resistor between the battery and the Vcc pin of the MCU is needed to create a low pass filter. This slows down the voltage changes when the solenoids turn on and off (these solenoids pull more than 1 amp). The MCU can brown out if it sees a change on the Vcc pin faster than 1V/us. The maximum current the MCU can pull is only about 2mA so we only lose 0.2 volts of power supply voltage worst case, and this chip can run down to 1.8V so this does not cost us any run time.
 
-If you somehow manage to interrupt the power durring countdown, the timer will resume counting at whatever time is was at when the power was removed. 
+### Keeping backup countdown in FRAM
 
-## LCD bias voltage
+This chip has FRAM memory which is consistant across power cycles and resets. We keep the current countdown time left (with 1 minute resoltion) in FRAM so in case the chip ever resets, then we will pick up where we left off. There is some complexity in making sure that updates to this FRAM counter are atomic so it does not get corrupted if we happen to fail in the middle of an update. 
+
+### LCD hardware optimizations
 
 We need regulated 3.0V DC for the LCD bias voltage, but we have 3V-3.6V coming from the batteries. 
 
@@ -151,7 +154,7 @@ just omit it from the board and and instead enable the internal regulator.
 ## Build notes
 
 
-## Current Usage
+### Current Usage
 
 | Mode | Vcc=3.55V<br>(2xAA fresh) | Vcc=2.6V<br>(2xAA after many decades) |  Vcc=7.0V<br>(4xAA fresh) | Vcc=5.2V (4xAA after many decades) |
 | - | -: | -: | -: | -: |
