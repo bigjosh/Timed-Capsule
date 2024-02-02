@@ -1,4 +1,5 @@
 #include <msp430.h>
+
 #include "util.h"
 #include "pins.h"
 #include "i2c_master.h"
@@ -611,8 +612,12 @@ __interrupt void clkout_isr(void) {
     // Do this first since there are a couple ways we can exit this ISR
     RV3032_CLKOUT_PIV;          // Implemented as "MOV.W   &Port_1_2_P2IV,R15"
 
-
-    countdown_s--;
+    /*
+    if (countdown_display_page==countdown_display_page_t::BLANK) {
+        // We have to to the cls here at the top becuase it takes time a
+        lcd_cls_LCDMEM();               // Clear the LCDMEM which is currently showing HHMMSS. This will happen aysnchonously, but that is ok becuase it does not matter since a transision to blank will always look OK.
+    }
+    */
 
     if (countdown_s==0) {
         if (countdown_m==0) {
@@ -621,7 +626,7 @@ __interrupt void clkout_isr(void) {
 
                     /// Time to unlock!!!!
 
-                    // We are donw with this mode
+                    // We are done with this mode
                     stop_countdown_mode();
 
                     // Show user we are opening
@@ -650,19 +655,20 @@ __interrupt void clkout_isr(void) {
             countdown_m=60;
             countdown_h--;
 
-            *hours_lcdmemw = hours_lcd_words[countdown_h];
+            //*hours_lcdmemw = hours_lcd_words[countdown_h];
 
         }
-        countdown_s=59;           // Yea I know this looks wrong, but we decremented at the top already.
+        countdown_s=60;           // Yea I know this looks wrong, but we decremented at the top already.
         countdown_m--;
 
-        *mins_lcdmemw = mins_lcd_words[countdown_m];
+        //*mins_lcdmemw = mins_lcd_words[countdown_m];
 
         // TODO: Update the recovery data here.
 
     }
 
-    *secs_lcdmemw = secs_lcd_words[countdown_s];
+    countdown_s--;
+    //*secs_lcdmemw = secs_lcd_words[countdown_s];
 
     /*
         // Wow, this compiler is not good. Below we can remove a whole instruction with 3 cycles that is completely unnecessary.
@@ -675,36 +681,52 @@ __interrupt void clkout_isr(void) {
 
     // Now update the display page
 
-    if (countdown_display_page==countdown_display_page_t::HHMMSS) {
+    // Order of pages is days->HHMMSS->blank
+    // This kind looks right because you read it "5 days... 4 hours and 22 minutes and 16 second... blank"
+
+    // HHMMSS is first in the if chain so we can handle the special case when days == 0
+    // When days is zero, we continuously show the HHMMSS page for increased excitement.
+    if (countdown_display_page==countdown_display_page_t::HHMMSS || countdown_d==0 ) {
         // The HHMMSS pattern is displayed from the primary LCD buffer
-        lcd_show_LCDMEM_bank();
+        // This page will either already have an old HHMMSS or it will be blank.
+        *hours_lcdmemw = hours_lcd_words[countdown_h];
+        *mins_lcdmemw = mins_lcd_words[countdown_m];
+        *secs_lcdmemw = secs_lcd_words[countdown_s];
+        lcd_show_LCDMEM_bank();         // Show the newly painted HHMMSS
 
-        // Turn the LCD back on after it was turned off in the BLANK page
-        lcd_on();
-
-        countdown_display_page = countdown_display_page_t::DAYS;                   // TODO: Only show just the HHMMSS page during the final 24h
+        countdown_display_page = countdown_display_page_t::BLANK;
 
     } else if (countdown_display_page==countdown_display_page_t::DAYS) {
 
-        lcd_show_LCDBMEM_bank();
-        countdown_display_page=countdown_display_page_t::BLANK;
+        lcd_show_LCDBMEM_bank();            // The day page is already painted on the LCDBMEM bank so we only have to show it.
+
+        countdown_display_page=countdown_display_page_t::HHMMSS;
 
 
     } else {  // if countdown_display_page==countdown_display_page_t::BLANK
 
-        lcd_off();
-        countdown_display_page=countdown_display_page_t::HHMMSS;
+        //lcd_cls_LCDMEM();               // Clear the LCDMEM which is currently showing HHMMSS. This will happen aysnchonously, but that is ok becuase it does not matter since a transision to blank will always look OK.
+
+        lcd_show_f(LCDMEM, 0, glyph_SPACE  );
+        lcd_show_f(LCDMEM, 1, glyph_SPACE  );
+        lcd_show_f(LCDMEM, 2, glyph_SPACE  );
+        lcd_show_f(LCDMEM, 3, glyph_SPACE  );
+        lcd_show_f(LCDMEM, 4, glyph_SPACE  );
+        lcd_show_f(LCDMEM, 5, glyph_SPACE  );
+        lcd_show_f(LCDMEM, 6, glyph_SPACE  );
+        lcd_show_LCDMEM_bank();         // Show the newly painted HHMMSS
+
+        countdown_display_page=countdown_display_page_t::DAYS;
 
     }
 
 }
 
-
-
 enum class setting_units_t {
     YEARS,
     DAYS,
     HOURS,
+    SECS,
 };
 
 
@@ -715,23 +737,6 @@ volatile setting_units_t setting_unit;
 volatile unsigned setting_digits[DIGITPLACE_COUNT-1];        // Current values ( minus one because the units use up LCD place 0).
 
 volatile unsigned setting_cursor_pos;        // Which digit position is the cursor currently on? 0=rightmost place.
-
-// Brief intermission here brought to you by the fact that C++ has no compile-time pow() function...
-// based on https://stackoverflow.com/a/27270738/3152071
-
-template <unsigned A, unsigned B>
-struct get_power
-{
-    static const unsigned value = A * get_power<A, B - 1>::value;
-};
-template <unsigned A>
-struct get_power<A, 0>
-{
-    static const unsigned value = 1;
-};
-
-// ... the show resumes now.
-
 
 // Show the current setting values on the LCD
 void update_setting_display() {
@@ -762,6 +767,10 @@ void update_setting_display() {
     glyph_segment_t units_glyph;
 
     switch ( setting_unit ) {
+
+        case setting_units_t::SECS:
+            units_glyph = glyph_c;
+            break;
 
         case setting_units_t::HOURS:
             units_glyph = glyph_h;
@@ -872,6 +881,10 @@ void testSolenoid(unsigned s) {
 
 }
 
+// Forward references.
+void stop_setting_mode();
+void start_countdown_mode( unsigned days, unsigned hours, unsigned mins, unsigned secs);
+
 
 // Handle interrupt for any switch (buttons and locking trigger)
 
@@ -894,6 +907,8 @@ __interrupt void button_isr(void) {
             // change units
 
             if (setting_unit==setting_units_t::YEARS) {
+                setting_unit = setting_units_t::SECS;
+            } else if (setting_unit==setting_units_t::SECS) {           // TODO: Remove seconds for production version
                 setting_unit = setting_units_t::HOURS;
             } else if (setting_unit==setting_units_t::HOURS) {
                 setting_unit = setting_units_t::DAYS;
@@ -1063,23 +1078,94 @@ __interrupt void button_isr(void) {
 
             // Trigger is currently still activated, so locking ring is rotated to lock and load position!
 
+            stop_setting_mode();
 
-            // For now just show a special pattern to show we know.
-            setting_unit = setting_units_t::HOURS;
-            setting_digits[0]=5;
-            setting_digits[1]=6;
-            setting_digits[2]=7;
-            setting_digits[3]=8;
-            setting_digits[4]=9;
-            update_setting_display();
+            // combine the setting digits into a numeric value
+
+            unsigned v=0;
+
+            unsigned i= DIGITPLACE_COUNT-1;         // -1 because one of the digit places is used for the units indicator in setting mode, the rest are digits.
+            while (i>0) {                           // SLightly complicated so we can work from highest digit to lowest. C++ should have a reverse foreach syntax.
+                i--;
+                v*=10;
+                v+=setting_digits[i];
+            }
+
+            // Compute how long the countdown is
+
+            unsigned d,h,m,s;
+
+            switch (setting_unit) {
+
+            case setting_units_t::SECS:
+                d=0;
+                h=0;
+                m=0;
+                s=v;
+                break;
+
+            case setting_units_t::HOURS:
+                d=0;
+                h=v;
+                m=0;
+                s=0;
+                break;
+
+            case setting_units_t::DAYS:
+                d=v;
+                h=0;
+                m=0;
+                s=0;
+                break;
+
+            case setting_units_t::YEARS:
+                // "The mean tropical year is approximately 365 days, 5 hours, 48 minutes, 45 seconds."
+                // https://en.wikipedia.org/wiki/Tropical_year#:~:text=the%20mean%20tropical%20year%20is%20approximately%20365%20days%2C%205%20hours%2C%2048%20minutes%2C%2045%20seconds.
+                // Note that we are depending on the UI code to prevent years from ever being >100 or else our d variable here could overflow.
+
+                d=0;
+                h=0;
+                m=0;
+                s=0;
+
+                for( unsigned y =0 ; y < v; v++ ) {
+
+                    s += 45;
+                    if (s>=60) {
+                        m++;
+                        s-=60;
+                    }
+
+                    m+=48;
+                    if (m>=60) {
+                        h++;
+                        m-=60;
+                    }
+
+                    h+=5;
+
+                    if (h>=24) {
+                        d++;
+                        h-=24;
+                    }
+
+                    d+=365;
+
+                }
+                break;
+
+            }
+
+            // Start the countdown
+
+            start_countdown_mode(d, h, m, s);
+
 
         }
         // CLear pending interrupt
         CBI( SWITCH_TRIGGER_PIFG , SWITCH_TRIGGER_B );  // Implemented as "AND.B   #0x007f,&Port_A_PAIFG"
 
     }
-
-
 
 }
 
@@ -1169,12 +1255,12 @@ void start_setting_mode() {
 
 
     // Start setting mode with 1 hour on the clock, cursor over the ones digit.
-    setting_unit = setting_units_t::HOURS;
-    setting_digits[0]=1;
-    setting_digits[1]=2;
-    setting_digits[2]=3;
-    setting_digits[3]=4;
-    setting_digits[4]=5;
+    setting_unit = setting_units_t::SECS;
+    setting_digits[0]=5;
+    setting_digits[1]=0;
+    setting_digits[2]=0;
+    setting_digits[3]=0;
+    setting_digits[4]=0;
 
     setting_cursor_pos = 1;
 
@@ -1222,6 +1308,11 @@ void start_countdown_mode( unsigned days, unsigned hours, unsigned mins, unsigne
     // This also makes things *feel* right so that the second tick is aligned with whatever user action that got us here.
     rv3032_zero();
 
+    // Switch to LCD mode where we can manually double buffer. We keep the days page on the second LCDBMEM page.
+    // The blink none mode prevents the blinking hardware from automatically switching the pages on us,
+    // we will do it ourselves.
+    lcd_blinking_mode_none();
+
     // Init the values we use inside the ISR
 
     countdown_d = days;
@@ -1229,25 +1320,38 @@ void start_countdown_mode( unsigned days, unsigned hours, unsigned mins, unsigne
     countdown_m = mins;
     countdown_s = secs;
 
-    countdown_display_page = countdown_display_page_t::HHMMSS;
 
-    // Get the first HHMMSS up on the LCDfor the people to look at
-    // Note we start with HHMMSS because we know that will always be a displayed page no matter how much time left.
+    // Get the first HHMMSS up on the LCD for the people to look at
+    // We need to do this because the ISR only updates digits that change, so this
+    // paints all the digits so something will be there until they next change.
 
     *secs_lcdmemw    = secs_lcd_words[countdown_s];
     *mins_lcdmemw    = secs_lcd_words[countdown_m];
     *hours_lcdmemw   = secs_lcd_words[countdown_h];
-
-    // Switch to LCD mode where we can manually double buffer. We keep the days page on the second LCDBMEM page.
-    // The blink none mode prevents the blinking hardware from automatically switching the pages on us,
-    // we will do it ourselves.
-    lcd_blinking_mode_none();
 
     // Now init that second page with the current day count and the label (which will stay there)
     // Note that the ISR will switch to this page when/if it wants to display it.
     // The ISR will also update this page if the day count changes
     lcd_show_day_label_lcdbmem();
     lcd_show_days_lcdbmem( countdown_d );
+
+
+    if ( countdown_d >0) {
+
+        // If countdown is more than a day, then show the day count initially
+        // If not then it looks weird because if, say, the duration is 5 days the the starting HHMMSS is 000000
+        lcd_show_LCDBMEM_bank();
+
+        // Go next to the blank page otherwise it looks weird if 5 days turns directly to 4 days without seeing the HHMMSS yet.
+        countdown_display_page = countdown_display_page_t::BLANK;
+
+    } else {
+
+        // If less than a day left then show HHMMSS now (and for the rest of the countdown)
+        lcd_show_LCDMEM_bank();
+        countdown_display_page = countdown_display_page_t::HHMMSS;
+
+    }
 
     // Now compute the values for the backup counters....
     // TODO: compute backup counters
@@ -1294,7 +1398,7 @@ void regulatorTest() {
     *hours_lcdmemw = hours_lcd_words[12];
 
 
-    //lcd_cls();
+    //lcd_cls_LCDMEM();
 
     // SLEEP
     __bis_SR_register(LPM4_bits );                // Enter LPM4, never wake up
@@ -1389,9 +1493,10 @@ int main( void )
 
     //regulatorTest();
 
-
     start_setting_mode();
     sleep_with_interrupts();                    // Wait for interrupts to take over.
+
+    // should never never get here.
 
     start_countdown_mode(2001, 1 , 1, 10);
     sleep_with_interrupts();                    // Wait for interrupts to take over.

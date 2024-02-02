@@ -168,7 +168,7 @@ void lcd_write_blank_to_lcdbm( byte digitplace ) {
 // Note this does block until the hardware indicates that the clear is complete.
 // TODO: Check how long this takes.
 
-void lcd_cls() {
+void lcd_cls_LCDMEM() {
     LCDMEMCTL |= LCDCLRM;                                      // Clear LCD memory
     while ( LCDMEMCTL & LCDCLRM );                             // Wait for clear to complete.
 }
@@ -1040,26 +1040,20 @@ void lcd_show_open_message() {
 
 
 
-constexpr glyph_segment_t first_start_message[] = {
-                                                   glyph_F,
-                                                   glyph_i,
-                                                   glyph_r,
-                                                   glyph_S,
-                                                   glyph_t,
-                                                   glyph_SPACE,
-                                                   glyph_S,
-                                                   glyph_t,
-                                                   glyph_A,
-                                                   glyph_r,
-                                                   glyph_t,
-                                                   glyph_SPACE,
+constexpr glyph_segment_t start_message[] = {
+                                                   glyph_lbrac,
+                                                   glyph_topbot,
+                                                   glyph_topbot,
+                                                   glyph_topbot,
+                                                   glyph_topbot,
+                                                   glyph_rbrac
 };
 
 // Show "First Start"
-void lcd_show_first_start_message() {
+void lcd_show_start_message() {
 
     for( byte i=0; i<DIGITPLACE_COUNT; i++ ) {
-        lcd_show_f(  i , first_start_message[ DIGITPLACE_COUNT - 1- i] );        // digit place 12 is rightmost, so reverse order for text
+        lcd_show_f(  i , start_message[ DIGITPLACE_COUNT - 1- i] );        // digit place 12 is rightmost, so reverse order for text
     }
 }
 

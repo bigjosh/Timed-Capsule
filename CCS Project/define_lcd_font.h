@@ -59,6 +59,7 @@ constexpr glyph_segment_t glyph_SPACE  = {                                      
 constexpr glyph_segment_t glyph_dash   = {  SEG_G_BIT     };                                                                                                // "-"
 constexpr glyph_segment_t glyph_rbrac  = {SEG_A_BIT     | SEG_B_BIT     | SEG_C_BIT     | SEG_D_BIT     };                                                  // "]"
 constexpr glyph_segment_t glyph_lbrac  = {SEG_A_BIT     |                                 SEG_D_BIT     | SEG_E_BIT     | SEG_F_BIT                      }; // "["
+constexpr glyph_segment_t glyph_topbot = {SEG_A_BIT     |                                 SEG_D_BIT                                                      }; // top and bottom segs lit
 
 
 // All the single digit numbers (up to 0x0f hex) in an array for easy access
