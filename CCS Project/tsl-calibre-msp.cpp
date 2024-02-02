@@ -116,7 +116,7 @@ inline void initGPIO() {
     // --- Solenoid MOSFETs off
 
     // Set Solenoid transistor pins to output off
-    // Note that they are also pulled down by 1K ohm resistors so they do not float before we get here during reset
+    // Note that they are also pulled down by 100K ohm resistors so they do not float before we get here during reset
     CBI( S1_POUT , S1_B );
     CBI( S2_POUT , S2_B );
     CBI( S3_POUT , S3_B );
@@ -197,9 +197,10 @@ inline void initGPIO() {
     // When the trigger is out, the pin is shorted to ground.
     // We will switch it to pull-up later if we need to (because we have not launched yet).
 
-    CBI( TRIGGER_POUT , TRIGGER_B );      // low
-    SBI( TRIGGER_PDIR , TRIGGER_B );      // drive
-    SBI( SWITCH_CHANGE_PIES , TRIGGER_B );      // Interrupt on high-to-low transition (pin pulled up, switch connects to ground)
+    CBI( SWITCH_TRIGGER_POUT , SWITCH_TRIGGER_B );      // low
+    SBI( SWITCH_TRIGGER_PDIR , SWITCH_TRIGGER_B );      // drive
+    SBI( SWITCH_TRIGGER_PREN , SWITCH_TRIGGER_B );      // Set pull mode to UP when POUT is high and PDIR is low (no effect when pin is in OUTPUT mode)
+    SBI( SWITCH_TRIGGER_PIES , SWITCH_TRIGGER_B );      // Interrupt on high-to-low transition (pin pulled up, switch connects to ground)
 
     // --- Buttons
 
@@ -329,6 +330,8 @@ void rv3032_zero() {
 // Terminate after one day
 bool testing_only_mode = false;
 
+/*
+
 // Called when trigger pin changes high to low, indicating the trigger has been pulled and we should start ticking.
 // Note that this interrupt is only enabled when we enter ready-to-launch mode, and then it is disabled and also the pin in driven low
 // when we then switch to time-since-lanuch mode, so this ISR can only get called in ready-to-lanuch mode.
@@ -394,6 +397,8 @@ __interrupt void trigger_isr(void) {
 
 }
 
+*/
+
 /*
 
  1024hz RTL pattern readings with Energytrace over 5 mins
@@ -416,86 +421,6 @@ __interrupt void trigger_isr(void) {
 
 */
 
-
-
-unsigned int step;          // LOAD_TRIGGER      - Used to keep the position of the dash moving across the display (0=leftmost position, only one dash showing)
-                            // READY_TO_LAUNCH   - Which step of the squigle animation
-
-
-
-// Spread the 6 day counter digits out to minimize superfluous digit updates and avoid mod and div operations.
-// These are set either when trigger is pulled or on power up after a battery change.
-
-unsigned days_digits[6];
-
-__interrupt void post_centiday_isr(void) {
-
-    lcd_show_digit_f( 0 , 1 );
-    lcd_show_digit_f( 1 , 0 );
-    lcd_show_digit_f( 2 , 0 );
-    lcd_show_digit_f( 3 , 0 );
-    lcd_show_digit_f( 4 , 0 );
-    lcd_show_digit_f( 5 , 0 );
-
-
-    lcd_show_digit_f(  6 , days_digits[0] );
-    lcd_show_digit_f(  7 , days_digits[1] );
-    lcd_show_digit_f(  8 , days_digits[2] );
-    lcd_show_digit_f(  9 , days_digits[3] );
-    lcd_show_digit_f( 10 , days_digits[4] );
-    lcd_show_digit_f( 11 , days_digits[5] );
-
-    CBI( RV3032_CLKOUT_PIFG , RV3032_CLKOUT_B );      // Clear the pending RV3032 INT interrupt flag that got us into this ISR.
-
-}
-
-
-// Called by the ASM TSL_MODE_ISR when it rolls over from 23:59:59 to 00:00:00
-// Note that since this is a `void` C++ function, the linker name gets mangled to `tsl_next_dayv`
-#pragma RETAIN
-void tsl_next_day() {
-
-    // First take care of our century book keeping...
-
-    // If we get here, then the 100 day counter has clicked so we need to do special update
-    // and increment remaining digits for next tick.
-
-    days_digits[1]=0x00;
-
-    lcd_show_centesimus_dies_message();
-
-#warning
-    //SET_CLKOUT_VECTOR( post_centiday_isr );
-
-    if (days_digits[2] < 9) {
-        days_digits[2]++;
-        return;
-    }
-    days_digits[2]=0x00;
-
-    if (days_digits[3] < 9) {
-        days_digits[3]++;
-        return;
-    }
-    days_digits[3]=0x00;
-
-    if (days_digits[4] < 9) {
-        days_digits[4]++;
-        return;
-    }
-    days_digits[4]=0x00;
-
-    if (days_digits[5] < 9) {
-        days_digits[5]++;
-        return;
-    }
-
-    // If we get here then we just passed 1 million days, so go into long now mode.
-
-    lcd_show_long_now();
-    blinkforeverandever();
-
-}
 
 
 
@@ -660,6 +585,13 @@ void disable_rv3032_clkout_interrupt() {
 
 }
 
+void stop_countdown_mode() {
+    disable_rv3032_clkout_interrupt();
+}
+
+
+void start_setting_mode();          // Forward reference, defined below with the setting mode stuffs
+
 
 enum class countdown_display_page_t {
     HHMMSS,
@@ -689,6 +621,9 @@ __interrupt void clkout_isr(void) {
 
                     /// Time to unlock!!!!
 
+                    // We are donw with this mode
+                    stop_countdown_mode();
+
                     // Show user we are opening
                     lcd_on();                       // We might have been showing a blank page?
                     lcd_show_LCDMEM_bank();
@@ -700,9 +635,8 @@ __interrupt void clkout_isr(void) {
 
                     open_lock();
 
-                    // Now go back to setting mode.
-
-                    // TODO: enter_setting_mode();
+                    // Now go back to setting mode so user can start a new countdown!
+                    start_setting_mode();
 
                     return;
 
@@ -742,22 +676,18 @@ __interrupt void clkout_isr(void) {
     // Now update the display page
 
     if (countdown_display_page==countdown_display_page_t::HHMMSS) {
-        // Turn the LCD back on after it was turned off in the BLANK page
-        lcd_on();
         // The HHMMSS pattern is displayed from the primary LCD buffer
         lcd_show_LCDMEM_bank();
 
+        // Turn the LCD back on after it was turned off in the BLANK page
+        lcd_on();
+
         countdown_display_page = countdown_display_page_t::DAYS;                   // TODO: Only show just the HHMMSS page during the final 24h
-
-        *hours_lcdmemw = hours_lcd_words[33];
-
 
     } else if (countdown_display_page==countdown_display_page_t::DAYS) {
 
         lcd_show_LCDBMEM_bank();
         countdown_display_page=countdown_display_page_t::BLANK;
-
-        *hours_lcdmemw = hours_lcd_words[22];
 
 
     } else {  // if countdown_display_page==countdown_display_page_t::BLANK
@@ -765,57 +695,99 @@ __interrupt void clkout_isr(void) {
         lcd_off();
         countdown_display_page=countdown_display_page_t::HHMMSS;
 
-        *hours_lcdmemw = hours_lcd_words[11];
-
     }
-
-
-
-    if (countdown_display_page==countdown_display_page_t::HHMMSS) {
-        *mins_lcdmemw = mins_lcd_words[33];
-
-
-    } else if (countdown_display_page==countdown_display_page_t::DAYS) {
-        *mins_lcdmemw = mins_lcd_words[22];
-
-    } else {  // if countdown_display_page==countdown_display_page_t::BLANK
-        *mins_lcdmemw = mins_lcd_words[11];
-    }
-
 
 }
 
 
 
-void setting_mode() {
-
-    enum units_t {
-        YEARS,
-        DAYS,
-        HOURS,
-        SECONDS
-    };
+enum class setting_units_t {
+    YEARS,
+    DAYS,
+    HOURS,
+};
 
 
-    units_t current_unit = units_t::HOURS;
-    unsigned long current_value = 1;        // Current value
+// These have to be volatile because they are updated inside the ISR
 
-    enum cursor_t {
-        THOUSANDS,
-        HUNDRES,
-        TENS,
-        ONES,
-        UNITS
-    };
+volatile setting_units_t setting_unit;
 
-    byte current_cursor = cursor_t::ONES;
+volatile unsigned setting_digits[DIGITPLACE_COUNT-1];        // Current values ( minus one because the units use up LCD place 0).
+
+volatile unsigned setting_cursor_pos;        // Which digit position is the cursor currently on? 0=rightmost place.
+
+// Brief intermission here brought to you by the fact that C++ has no compile-time pow() function...
+// based on https://stackoverflow.com/a/27270738/3152071
+
+template <unsigned A, unsigned B>
+struct get_power
+{
+    static const unsigned value = A * get_power<A, B - 1>::value;
+};
+template <unsigned A>
+struct get_power<A, 0>
+{
+    static const unsigned value = 1;
+};
+
+// ... the show resumes now.
 
 
+// Show the current setting values on the LCD
+void update_setting_display() {
 
+
+    // Note that this does do leading zeros, which I think we want?
+
+    // Show digits, starting at left going to right
+    for( unsigned pos = 1; pos < DIGITPLACE_COUNT ; pos++ ) {
+
+        unsigned v = setting_digits[pos-1]; // -1 becuase LCD place 0 is used for units
+
+        lcd_show_digit_f( LCDMEM , pos, v );
+
+        // If the cursor is on this place...
+        if (pos==setting_cursor_pos) {
+            // ... make the segments blink
+            lcd_show_digit_f( LCDBMEM , pos, v);
+        } else {
+            // Otherwise clear all segments so no blink
+            lcd_show_f( LCDBMEM , pos , glyph_SPACE);
+        }
+
+    }
+
+    // Now show the units
+
+    glyph_segment_t units_glyph;
+
+    switch ( setting_unit ) {
+
+        case setting_units_t::HOURS:
+            units_glyph = glyph_h;
+            break;
+
+        case setting_units_t::DAYS:
+            units_glyph = glyph_d;
+            break;
+
+        case setting_units_t::YEARS:
+            units_glyph = glyph_y;
+            break;
+
+
+    }
+
+    lcd_show_f( LCDMEM , 0 , units_glyph);
+
+    // Is cursor currently on the units pos?
+    if (setting_cursor_pos==0) {
+        lcd_show_f( LCDBMEM , 0 , units_glyph);
+    } else {
+        lcd_show_f( LCDBMEM , 0 , glyph_SPACE);
+    }
 
 }
-
-
 
 // When the switch bit here is 1, then button is up and we will interrupt high-to-low,
 // and we will register a press.
@@ -829,6 +801,8 @@ void setting_mode() {
 //
 
 unsigned switch_armed_flags;
+
+/*
 
 void enable_button_interrupts() {
 
@@ -847,7 +821,6 @@ void enable_button_interrupts() {
     // We do not need to wait for the resistors to take effect since we initially will only interrupt
     // on high to low transitions and the pulls will cause a low to high.
 
-
     // Initially Interrupt on the next high-to-low transitions
     SBI( SWITCH_CHANGE_PIES , SWITCH_CHANGE_B );
     SBI( SWITCH_MOVE_PIES , SWITCH_MOVE_B );
@@ -865,6 +838,8 @@ void enable_button_interrupts() {
     SBI( SWITCH_MOVE_PIE , SWITCH_MOVE_B );
 
 }
+
+*/
 
 
 #if (SWITCH_CHANGE_VECTOR != SWITCH_MOVE_VECTOR)
@@ -898,8 +873,6 @@ void testSolenoid(unsigned s) {
 }
 
 
-volatile unsigned setting_value;
-
 // Handle interrupt for any switch (buttons and locking trigger)
 
 #pragma vector=SWITCH_CHANGE_VECTOR
@@ -909,8 +882,7 @@ __interrupt void button_isr(void) {
     // We capture a snapshot here so we do not miss any updates, but also so we can clear any changes that happen
     // from switch bounce below.
 
-    // Show reset count
-    //*hours_lcdmemw = secs_lcd_words[reset_counter_value];
+    static_assert(  ( &SWITCH_CHANGE_PIFG == &SWITCH_MOVE_PIFG ) && ( &SWITCH_CHANGE_PIFG == &SWITCH_TRIGGER_PIFG ) , "This code assumes that The two buttons and the trigger switch are all connected to the same ISR." );
 
     unsigned capture_interrupt_flags = SWITCH_CHANGE_PIFG;
 
@@ -918,25 +890,99 @@ __interrupt void button_isr(void) {
 
     if ( TBI( capture_interrupt_flags , SWITCH_CHANGE_B ) && TBI( switch_armed_flags , SWITCH_CHANGE_B )  ) {
 
+        if ( setting_cursor_pos == 0 ) {
+            // change units
+
+            if (setting_unit==setting_units_t::YEARS) {
+                setting_unit = setting_units_t::HOURS;
+            } else if (setting_unit==setting_units_t::HOURS) {
+                setting_unit = setting_units_t::DAYS;
+            } else { // if (setting_unit==setting_units_t::DAYS) {
+
+                setting_unit = setting_units_t::YEARS;
+                // Switch to years units is special since we have to make sure they never can
+                // set more than 100 years.
+
+                setting_digits[4]=0;
+                setting_digits[3]=0;
+
+                if (setting_digits[1] != 0 || setting_digits[0] !=0 ) {
+                    setting_digits[2]=0;
+                }
+
+                if (setting_digits[2]>1) {
+                    setting_digits[2]=1;
+                }
+
+                // We also constrain the cursor from even going to the unsettable digits
+                if (setting_cursor_pos>3) {
+                    setting_cursor_pos=3;
+                }
+            }
+
+        } else {
+
+            // Changing a number digit, not the units place
+            // Remember we use (pos-1) because pos 0 on the LCD is the units, so digits start at pos 1
+            if (setting_digits[setting_cursor_pos-1]==9) {
+                setting_digits[setting_cursor_pos-1] = 0;
+            } else {
+                setting_digits[setting_cursor_pos-1]++;
+            }
+
+            if (setting_unit==setting_units_t::YEARS) {
+
+                // We also constrain choices while in years units to limit from going over 100
+
+                if (setting_cursor_pos==3) {
+
+                    // They changed the hundreds digit of the year
+
+                    if (setting_digits[2] == 1) {
+
+                        // They updated it from 0 to 1, so tens and ones have to be 0 to keep less than 100.
+                        setting_digits[1]=0;
+                        setting_digits[0]=0;
+                    }
+
+
+                    if (setting_digits[2] > 1) {
+                        // They updated hundreds digit from 1 to 2, so we have to bring it back down to 0
+                        setting_digits[2] = 0;
+                    }
+
+                } else if (setting_digits[1] != 0 || setting_digits[0] !=0 ) {
+
+                    // The years tens or ones digits are non-zero, so hundreds much be zero to keep total less than 100
+                    setting_digits[2]=0;
+
+                }
+
+            }
+        }
 
     }
-
-
-
 
     if ( TBI( capture_interrupt_flags , SWITCH_MOVE_B ) && TBI( switch_armed_flags , SWITCH_MOVE_B )  ) {
 
-        // Make digitplace 5 not blink
-        lcd_write_blank_to_lcdbm( 5 );
+        if ( setting_cursor_pos == 0 ) {
 
-        // Make digitplace 0 blink
-        lcd_write_glyph_to_lcdbm( 0 , glyph_8 );
+            // If in year mode then do not give access to the leftmost 2 digits (max 100 years)
 
-        // testSolenoid(1);
+            if ( setting_unit == setting_units_t::YEARS) {
+                setting_cursor_pos = 3;
+            } else {
+                setting_cursor_pos = 5;
+            }
+
+
+        } else {
+            setting_cursor_pos--;
+        }
 
     }
 
-
+    update_setting_display();
 
     // Ok this part is tricky. We need to be able to debounce the switches but we can only get interrupts
     // in one direction at a time. So our strategy is to wait for 50ms after any change to give the bouncing time
@@ -1007,43 +1053,161 @@ __interrupt void button_isr(void) {
     }
 
 
+    if (TBI(capture_interrupt_flags, SWITCH_TRIGGER_B) ) {
+
+        // Trigger generated a interrupt
+
+        // As a safety against glitches, we check to make sure it is still actuated now even after the above 50ms delay
+
+        if (!TBI(SWITCH_TRIGGER_PIN, SWITCH_TRIGGER_B) ) {
+
+            // Trigger is currently still activated, so locking ring is rotated to lock and load position!
+
+
+            // For now just show a special pattern to show we know.
+            setting_unit = setting_units_t::HOURS;
+            setting_digits[0]=5;
+            setting_digits[1]=6;
+            setting_digits[2]=7;
+            setting_digits[3]=8;
+            setting_digits[4]=9;
+            update_setting_display();
+
+        }
+        // CLear pending interrupt
+        CBI( SWITCH_TRIGGER_PIFG , SWITCH_TRIGGER_B );  // Implemented as "AND.B   #0x007f,&Port_A_PAIFG"
+
+    }
+
+
 
 }
 
 
+void enable_button_interrupts() {
 
-void disable_buttons() {
+    // We do not need to wait for the resistors to take effect since we initially will only interrupt
+    // on high to low transitions and the pulls will cause a low to high.
 
+    // Interrupt on the next high-to-low transitions
+    SBI( SWITCH_CHANGE_PIES , SWITCH_CHANGE_B );
+    SBI( SWITCH_MOVE_PIES , SWITCH_MOVE_B );
+    SBI( SWITCH_TRIGGER_PIES , SWITCH_TRIGGER_B);
+
+    // Clear any pending interrupts
+    CBI( SWITCH_CHANGE_PIFG , SWITCH_CHANGE_B    );
+    CBI( SWITCH_MOVE_PIFG , SWITCH_MOVE_B    );
+    CBI( SWITCH_TRIGGER_PIFG , SWITCH_TRIGGER_B );
+
+    // Enable pin change interrupt on the pins
+    SBI( SWITCH_CHANGE_PIE , SWITCH_CHANGE_B );
+    SBI( SWITCH_MOVE_PIE , SWITCH_MOVE_B );
+    SBI( SWITCH_TRIGGER_PIE , SWITCH_TRIGGER_B );
+
+}
+
+void disable_button_interrupts() {
     // Disable pin change interrupt on the pins
     // Do this first so we dont get any spurious ints when we drive them low.
 
     CBI( SWITCH_CHANGE_PIE , SWITCH_CHANGE_B );
     CBI( SWITCH_MOVE_PIE , SWITCH_MOVE_B );
+    CBI( SWITCH_TRIGGER_PIE , SWITCH_TRIGGER_B);
+}
 
+void disable_buttons() {
+
+    // Below is probably overly cautious, we could leave the button pull-ups on and that would be fine.
+    // But JUST IN CASE in 75 years a button fails short, this makes sure that short does not use any
+    // power.
 
     // Disable pull-ups
-    // NOte it is import to do this before setting PDIR or else if the button happens to be
+    // Note it is import to do this before setting PDIR or else if the button happens to be
     // pressed then it could short a hi drive to ground
 
     CBI( SWITCH_CHANGE_POUT , SWITCH_CHANGE_B );
     CBI( SWITCH_MOVE_POUT , SWITCH_MOVE_B );
+    CBI( SWITCH_TRIGGER_POUT , SWITCH_TRIGGER_B );
 
     // Drive pins low to avoid floating.
 
-    SBI( SWITCH_MOVE_PDIR , TRIGGER_B );      // drive
-    SBI( SWITCH_CHANGE_PDIR , TRIGGER_B );      // drive
+    SBI( SWITCH_MOVE_PDIR , SWITCH_MOVE_B );      // drive
+    SBI( SWITCH_CHANGE_PDIR , SWITCH_CHANGE_B );      // drive
+    SBI( SWITCH_TRIGGER_PDIR, SWITCH_TRIGGER_B );      // drive
 
 }
 
+void enable_buttons() {
+
+    // Set pins to input mode
+
+    CBI( SWITCH_MOVE_PDIR    , SWITCH_MOVE_B );      // drive
+    CBI( SWITCH_CHANGE_PDIR  , SWITCH_CHANGE_B );      // drive
+    CBI( SWITCH_TRIGGER_PDIR , SWITCH_TRIGGER_B );      // drive
+
+
+    // Enable pull-ups
+    // Note it is import to do this after setting PDIR or else if the button happens to be
+    // pressed then it could short a hi drive to ground
+
+    SBI( SWITCH_CHANGE_POUT , SWITCH_CHANGE_B );
+    SBI( SWITCH_MOVE_POUT , SWITCH_MOVE_B );
+    SBI( SWITCH_TRIGGER_POUT , SWITCH_TRIGGER_B );
+
+}
+
+
+void start_setting_mode() {
+
+    // We use the blinking segments mode to make the cursor visible. This is very nice
+    // because it is done in the LCD hardware so uses no extra power. Setting this mode
+    // also updates the blink speed to be fast which looks good.
+
+    lcd_blinking_mode_segments();
+    // We use the main memory bank for the segments we want to show, and the B bank to set which should blink.
+    lcd_show_LCDMEM_bank();
+
+
+    // Start setting mode with 1 hour on the clock, cursor over the ones digit.
+    setting_unit = setting_units_t::HOURS;
+    setting_digits[0]=1;
+    setting_digits[1]=2;
+    setting_digits[2]=3;
+    setting_digits[3]=4;
+    setting_digits[4]=5;
+
+    setting_cursor_pos = 1;
+
+    // Show it on the display
+    update_setting_display();
+
+    // Arm the buttons so we register the next press
+    SBI( switch_armed_flags , SWITCH_CHANGE_B);
+    SBI( switch_armed_flags , SWITCH_MOVE_B);
+
+    enable_buttons();
+    enable_button_interrupts();
+}
+
+void stop_setting_mode() {
+    disable_button_interrupts();
+    disable_buttons();
+}
+
+void tsl_next_day() {
+    // PLACEHOLDER
+}
+
+
 // Start counting down!
 // When called, it inits the LCD to the starting time and gets everything ready so that subsequent clkout
-// inetrrupt will update the count. When the count reaches zero, it will open the solenoids and then
+// Interrupt will update the count. When the count reaches zero, it will open the solenoids and then
 // call end_countdown_mode() and then start_setting_mode().
 
 /*
  * You should sleep after calling this with
  *
-    // Wait for interrupt to fire at next clkout low-to-high change to drive us into the state machine (in either "pin loading" or "time since lanuch" mode)
+    // Wait for interrupt to fire at next clkout low-to-high change to drive us into the state machine (in either "pin loading" or "time since launch" mode)
     // Could also enable the trigger pin change ISR if we are in RTL mode.
     // Note if we use LPM3_bits then we burn 18uA versus <2uA if we use LPM4_bits.
     __bis_SR_register(LPM4_bits | GIE );                // Enter LPM4
@@ -1226,6 +1390,9 @@ int main( void )
     //regulatorTest();
 
 
+    start_setting_mode();
+    sleep_with_interrupts();                    // Wait for interrupts to take over.
+
     start_countdown_mode(2001, 1 , 1, 10);
     sleep_with_interrupts();                    // Wait for interrupts to take over.
 
@@ -1348,7 +1515,7 @@ int main( void )
         switch (mode) {
 
         case mode_t::SETTING:
-            setting_mode();
+            //setting_mode();
             break;
 
         case mode_t::LOCKED:
@@ -1432,8 +1599,6 @@ int main( void )
     CBI( RV3032_CLKOUT_PIE , RV3032_CLKOUT_B );     // Disable interrupt.
     CBI( RV3032_CLKOUT_PIFG , RV3032_CLKOUT_B );    // Clear any pending interrupt.
 
-    CBI( TRIGGER_PIE , TRIGGER_B );                 // Disable interrupt
-    CBI( TRIGGER_PIFG , TRIGGER_B );                // Clear any pending interrupt.
 
     error_mode( ERROR_MAIN_RETURN );                    // This would be very weird if we ever saw it.
 

@@ -174,17 +174,17 @@
 
 // --- LOCKING TRIGGER SWITCH
 
-#define TRIGGER_PREN   P1REN
-#define TRIGGER_PDIR   P1DIR
-#define TRIGGER_POUT   P1OUT
-#define TRIGGER_PIN    P1IN
-#define TRIGGER_PIE    P1IE           // Interrupt enable
-#define TRIGGER_PIV    P1IV           // Interrupt vector (read this to get which pin caused interrupt, reading clears highest pending)
-#define TRIGGER_PIFG   P1IFG          // Interrupt flag (bit 1 for each pin that interrupted)
-#define TRIGGER_PIES   P1IES          // Interrupt Edge Select (0=low-to-high 1=high-to-low)
-#define TRIGGER_VECTOR PORT1_VECTOR   // ISR vector
+#define SWITCH_TRIGGER_PREN   P1REN
+#define SWITCH_TRIGGER_PDIR   P1DIR
+#define SWITCH_TRIGGER_POUT   P1OUT
+#define SWITCH_TRIGGER_PIN    P1IN
+#define SWITCH_TRIGGER_PIE    P1IE           // Interrupt enable
+#define SWITCH_TRIGGER_PIV    P1IV           // Interrupt vector (read this to get which pin caused interrupt, reading clears highest pending)
+#define SWITCH_TRIGGER_PIFG   P1IFG          // Interrupt flag (bit 1 for each pin that interrupted)
+#define SWITCH_TRIGGER_PIES   P1IES          // Interrupt Edge Select (0=low-to-high 1=high-to-low)
+#define SWITCH_TRIGGER_VECTOR PORT1_VECTOR   // ISR vector
 
-#define TRIGGER_B (1)
+#define SWITCH_TRIGGER_B (1)
 
 
 // --- TSP voltage regulator

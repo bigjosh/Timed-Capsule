@@ -58,7 +58,12 @@ inline void lcd_show();
 
 void lcd_show_fast_secs( uint8_t secs );
 
+// p=0 is the rightmost digit
+
+void lcd_show_f( char *lcdmem_base ,  const uint8_t pos, const glyph_segment_t segs );
+
 void lcd_show_digit_f( const uint8_t pos, const byte d );
+void lcd_show_digit_f( char *lcd_base , const uint8_t pos, const byte d );
 
 void lcd_show_testing_only_message();
 

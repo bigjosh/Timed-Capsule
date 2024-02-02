@@ -73,34 +73,47 @@ void lcd_write_glyph_to_lcdmem( char *lcdmem_base , byte digitplace, glyph_segme
 
     if ( glyph & SEG_A_BIT ) {
         lcd_segment_set( lcdmem_base , digit_segments.SEG_A);
+    } else {
+        lcd_segment_clear(lcdmem_base , digit_segments.SEG_A);
     }
 
     if ( glyph & SEG_B_BIT ) {
         lcd_segment_set( lcdmem_base , digit_segments.SEG_B);
+    } else {
+        lcd_segment_clear(lcdmem_base , digit_segments.SEG_B);
     }
 
     if ( glyph & SEG_C_BIT ) {
         lcd_segment_set( lcdmem_base , digit_segments.SEG_C);
+    } else {
+        lcd_segment_clear(lcdmem_base , digit_segments.SEG_C);
     }
 
     if ( glyph & SEG_D_BIT ) {
         lcd_segment_set( lcdmem_base , digit_segments.SEG_D);
+    } else {
+        lcd_segment_clear(lcdmem_base , digit_segments.SEG_D);
     }
 
     if ( glyph & SEG_E_BIT ) {
         lcd_segment_set( lcdmem_base , digit_segments.SEG_E);
+    } else {
+        lcd_segment_clear(lcdmem_base , digit_segments.SEG_E);
     }
 
     if ( glyph & SEG_F_BIT ) {
         lcd_segment_set( lcdmem_base , digit_segments.SEG_F);
+    } else {
+        lcd_segment_clear(lcdmem_base , digit_segments.SEG_F);
     }
 
     if ( glyph & SEG_G_BIT ) {
         lcd_segment_set( lcdmem_base , digit_segments.SEG_G);
+    } else {
+        lcd_segment_clear(lcdmem_base , digit_segments.SEG_G);
     }
 
 }
-
 
 
 // General function to write a glyph onto the LCD. No constraints on how pins are connected, but inefficient.
@@ -458,7 +471,7 @@ void lcd_show_days_lcdbmem( const unsigned days ) {
 
 
     while (pow>0) {
-        unsigned y = x / pow;
+        unsigned char y = x / pow;                  // we know the result of this divide must be less than 10
         lcd_show_digit_f( LCDBMEM , place , y);
         place--;
 
@@ -728,7 +741,7 @@ void lcd_blinking_mode_none() {
     LCDBM4 =  LCDM4;            // TODO: These could be faster, and do we really need them? Doesn't seem to actually matter.
     LCDBM5 =  LCDM5;
 
-    LCDBLKCTL = LCDBLKPRE__64 | LCDBLKMOD_0;       // Clock prescaler for blink rate, "Blinking of individual segments as enabled in blinking memory register LCDBMx."
+    LCDBLKCTL = LCDBLKPRE__16 | LCDBLKMOD_0;       // Clock prescaler for blink rate, "Blinking of individual segments as enabled in blinking memory register LCDBMx."
 }
 
 // Put the LCD into blinking mode where any segment in LCDBMEM blinks
@@ -741,7 +754,7 @@ void lcd_blinking_mode_segments() {
     LCDBM4 =  0x00;            // TODO: Do we really need them? Doesn't seem to actually matter.
     LCDBM5 =  0x00;
 
-    LCDBLKCTL = LCDBLKPRE__64 | LCDBLKMOD_1;       // Clock prescaler for blink rate, "Blinking of individual segments as enabled in blinking memory register LCDBMx."
+    LCDBLKCTL = LCDBLKPRE__16 | LCDBLKMOD_1;       // Clock prescaler for blink rate, "Blinking of individual segments as enabled in blinking memory register LCDBMx."
 }
 
 // Put the LCD into blinking mode where all segments blink

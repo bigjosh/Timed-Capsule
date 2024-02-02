@@ -36,6 +36,7 @@ constexpr glyph_segment_t glyph_E      = {SEG_A_BIT     |                       
 constexpr glyph_segment_t glyph_F      = {SEG_A_BIT                                                     | SEG_E_BIT     | SEG_F_BIT     | SEG_G_BIT      }; // "F"
 constexpr glyph_segment_t glyph_g      = {SEG_A_BIT     | SEG_B_BIT     | SEG_C_BIT     | SEG_D_BIT     |                 SEG_F_BIT     | SEG_G_BIT      }; // g
 constexpr glyph_segment_t glyph_H      = {                SEG_B_BIT     | SEG_C_BIT                     | SEG_E_BIT     | SEG_F_BIT     | SEG_G_BIT      }; // "H"
+constexpr glyph_segment_t glyph_h      = {                                SEG_C_BIT                     | SEG_E_BIT     | SEG_F_BIT     | SEG_G_BIT      }; // "h"
 constexpr glyph_segment_t glyph_I      = {                SEG_B_BIT     | SEG_C_BIT                                                                      }; // I
 constexpr glyph_segment_t glyph_J      = {                SEG_B_BIT     | SEG_C_BIT     | SEG_D_BIT     | SEG_E_BIT                                      }; // "J"
 constexpr glyph_segment_t glyph_K      = {                SEG_B_BIT     | SEG_C_BIT                     | SEG_E_BIT     | SEG_F_BIT     | SEG_G_BIT      }; // "K"
