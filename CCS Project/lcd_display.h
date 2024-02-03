@@ -115,6 +115,9 @@ void lcd_show_zeros();
 
 void lcd_cls_LCDMEM();
 
+void lcd_cls_LCDMEM_nowait();       // Do it blindly, start the process but do not wait for it to complete.
+
+
 
 // Init the "d" in the days display in the secondary LCD buffer
 void lcd_show_day_label_lcdbmem();

@@ -491,19 +491,57 @@ void fire_solenoids() {
 */
 }
 
-void open_lock() {
+// open the pair of solenoids connected to a single lock slide.
+// g can be 0,1, or 2.
 
-    // For now just open 1 and 2 for testing
-    // TODO: Activate all solenoids in sequence
+// TODO: Potentially reduce the max current load by only giving one solenoid full power just long enough for it to pull, then PWM it while pulling the other one.
 
-    solenoidOn(1);
-    solenoidOn(2);
+void toggle_lock_group( unsigned g ) {
+
+    struct solenoid_pair_t { unsigned a; unsigned b;};
+
+    constexpr solenoid_pair_t solenoid_pairs[] = { {2,3} , {4,5} , {6,1} };
+
+    solenoid_pair_t solenoid_pair = solenoid_pairs[g];
+
+    unsigned solenoid_a =  solenoid_pair.a;
+    unsigned solenoid_b =  solenoid_pair.b;
+
+    solenoidOn(solenoid_a);
+    solenoidOn(solenoid_b);
 
     __delay_cycles( 50000 );
 
-    solenoidOff(1);
-    solenoidOff(2);
+    solenoidOff(solenoid_a);
+    solenoidOff(solenoid_b);
 
+
+}
+
+// Unlock the lid by pulling each if the 3 solenoid pairs in sequence.
+// We have to pull in pairs because both solenoid pins have to be pulled for the slide to be released.
+// We rotate with pair we start with on each call. This is in case one of the pairs needs the slightly higher current the batteries can give after they have rested for a minute.
+
+static unsigned next_starting_pair = 0;
+
+void unlock() {
+
+    // Open each pair of solenoids in sequence, hopefully pulling them just long enough for the lock slide to retract.
+
+    unsigned pull_pair = next_starting_pair;
+
+    do {
+
+        toggle_lock_group(pull_pair);
+        __delay_cycles( 100000 );           // Delay to slightly let the batteries recover
+
+        pull_pair++;
+        pull_pair %=3;
+
+    } while ( pull_pair != next_starting_pair);
+
+    next_starting_pair++;
+    next_starting_pair%3;
 }
 
 // These two countdown vars keep track of how long until we unlock. We do not initialize them since they will get set when
@@ -638,7 +676,7 @@ __interrupt void clkout_isr(void) {
 
                     disable_rv3032_clkout_interrupt();
 
-                    open_lock();
+                    unlock();
 
                     // Now go back to setting mode so user can start a new countdown!
                     start_setting_mode();
@@ -705,7 +743,12 @@ __interrupt void clkout_isr(void) {
 
     } else {  // if countdown_display_page==countdown_display_page_t::BLANK
 
-        //lcd_cls_LCDMEM();               // Clear the LCDMEM which is currently showing HHMMSS. This will happen aysnchonously, but that is ok becuase it does not matter since a transision to blank will always look OK.
+        // TODO: POWER OPTIMIZE THIS!!!
+
+
+        // TODO: Figure out why this does not work. Somehow blocks the HHMMSS page that comes after the days page. :/
+        // lcd_cls_LCDMEM_nowait();               // Clear the LCDMEM which is currently showing HHMMSS. This will happen aysnchonously, but that is ok becuase it does not matter since a transision to blank will always look OK.
+
 
         lcd_show_f(LCDMEM, 0, glyph_SPACE  );
         lcd_show_f(LCDMEM, 1, glyph_SPACE  );
@@ -714,6 +757,8 @@ __interrupt void clkout_isr(void) {
         lcd_show_f(LCDMEM, 4, glyph_SPACE  );
         lcd_show_f(LCDMEM, 5, glyph_SPACE  );
         lcd_show_f(LCDMEM, 6, glyph_SPACE  );
+
+
         lcd_show_LCDMEM_bank();         // Show the newly painted HHMMSS
 
         countdown_display_page=countdown_display_page_t::DAYS;
@@ -1091,70 +1136,49 @@ __interrupt void button_isr(void) {
                 v+=setting_digits[i];
             }
 
-            // Compute how long the countdown is
+            // Compute how long the countdown is based on the value and units the user gave us.
 
             unsigned d,h,m,s;
+
+            unsigned long secs;     // Luckily unsigned long can hold up to 136 years, so we can work with this size as our universal base time unit.
 
             switch (setting_unit) {
 
             case setting_units_t::SECS:
-                d=0;
-                h=0;
-                m=0;
-                s=v;
+                secs = v;
                 break;
 
             case setting_units_t::HOURS:
-                d=0;
-                h=v;
-                m=0;
-                s=0;
+                secs = v * 60UL * 60UL;                 // 60 seconds per min * 60 mins per hour
                 break;
 
             case setting_units_t::DAYS:
-                d=v;
-                h=0;
-                m=0;
-                s=0;
+                secs = v * 60UL * 60UL * 24UL;         // .. * 24 hours in a day
                 break;
 
             case setting_units_t::YEARS:
+                secs = v * 31556926UL; // https://frinklang.org/fsp/frink.fsp?fromVal=1+solaryear&toVal=seconds#calc
+
                 // "The mean tropical year is approximately 365 days, 5 hours, 48 minutes, 45 seconds."
                 // https://en.wikipedia.org/wiki/Tropical_year#:~:text=the%20mean%20tropical%20year%20is%20approximately%20365%20days%2C%205%20hours%2C%2048%20minutes%2C%2045%20seconds.
-                // Note that we are depending on the UI code to prevent years from ever being >100 or else our d variable here could overflow.
-
-                d=0;
-                h=0;
-                m=0;
-                s=0;
-
-                for( unsigned y =0 ; y < v; v++ ) {
-
-                    s += 45;
-                    if (s>=60) {
-                        m++;
-                        s-=60;
-                    }
-
-                    m+=48;
-                    if (m>=60) {
-                        h++;
-                        m-=60;
-                    }
-
-                    h+=5;
-
-                    if (h>=24) {
-                        d++;
-                        h-=24;
-                    }
-
-                    d+=365;
-
-                }
-                break;
+                // Note that we are depending on the UI code to prevent years from ever being >100 or else our seconds variable here could overflow.
 
             }
+
+
+            // Normalize the total seconds to days, hours, mins, and secs
+            // This ensures that, say, 120 seconds shows up correctly as 2 min.
+
+            d= (secs / (60UL * 60UL * 24UL));
+            secs = secs - ( d * 60UL * 60UL *24UL );
+
+            h= (secs / (60UL * 60UL) );
+            secs = secs - ( h * 60UL * 60UL );
+
+            m= secs / (60UL);
+            secs = secs - ( m* 60UL);
+
+            s=secs;
 
             // Start the countdown
 
@@ -1339,11 +1363,15 @@ void start_countdown_mode( unsigned days, unsigned hours, unsigned mins, unsigne
     if ( countdown_d >0) {
 
         // If countdown is more than a day, then show the day count initially
-        // If not then it looks weird because if, say, the duration is 5 days the the starting HHMMSS is 000000
         lcd_show_LCDBMEM_bank();
 
-        // Go next to the blank page otherwise it looks weird if 5 days turns directly to 4 days without seeing the HHMMSS yet.
-        countdown_display_page = countdown_display_page_t::BLANK;
+        if ( countdown_h==0 && countdown_m==0 && countdown_s==0) {
+            // Go next to the blank page otherwise it looks weird if 5 days turns directly to 4 days without seeing the HHMMSS yet.
+            countdown_display_page = countdown_display_page_t::BLANK;
+        } else {
+            // If there are also some hours, mins, or seconds then show those. This can happen, say, if the setting was 49 hours (=2 days + 1 hour)
+            countdown_display_page = countdown_display_page_t::HHMMSS;
+        }
 
     } else {
 

@@ -173,6 +173,11 @@ void lcd_cls_LCDMEM() {
     while ( LCDMEMCTL & LCDCLRM );                             // Wait for clear to complete.
 }
 
+void lcd_cls_LCDMEM_nowait() {
+    LCDMEMCTL |= LCDCLRM;                                      // Clear LCD memory
+}
+
+
 // Thanks chatGPT for this function! :)
 template<typename T>
 constexpr bool areAllEqual(const T& first) {
