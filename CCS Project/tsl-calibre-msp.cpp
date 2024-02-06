@@ -541,7 +541,7 @@ void unlock() {
     } while ( pull_pair != next_starting_pair);
 
     next_starting_pair++;
-    next_starting_pair%3;
+    next_starting_pair%=3;
 }
 
 // These two countdown vars keep track of how long until we unlock. We do not initialize them since they will get set when
