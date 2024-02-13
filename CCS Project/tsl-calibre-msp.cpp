@@ -693,29 +693,24 @@ __interrupt void clkout_isr(void) {
             countdown_m=60;
             countdown_h--;
 
-            //*hours_lcdmemw = hours_lcd_words[countdown_h];
+            *hours_lcdmemw = hours_lcd_words[countdown_h];          // Write the updated hours to the LCD in the LCDMEM bank
+
 
         }
         countdown_s=60;           // Yea I know this looks wrong, but we decremented at the top already.
         countdown_m--;
 
-        //*mins_lcdmemw = mins_lcd_words[countdown_m];
+        *mins_lcdmemw = mins_lcd_words[countdown_m];            // Write the updated mins to the LCD in the LCDMEM bank
+
 
         // TODO: Update the recovery data here.
 
     }
 
     countdown_s--;
-    //*secs_lcdmemw = secs_lcd_words[countdown_s];
 
-    /*
-        // Wow, this compiler is not good. Below we can remove a whole instruction with 3 cycles that is completely unnecessary.
-
-        asm("        MOV.B     &s+0,r15           ; [] |../tsl-calibre-msp.cpp:1390| ");
-        asm("        RLAM.W    #1,r15                ; [] |../tsl-calibre-msp.cpp:1390| ");
-        asm("        MOV.W     secs_lcd_words+0(r15),(LCDM0W_L+16) ; [] |../tsl-calibre-msp.cpp:1390|");
-    */
-
+    // Note that we do not bother to update the seconds digits on the LCD here becuase no one will see them
+    // if we are showing the day or blank pages. So instead we update them below only if we are on the HHMMSS page. Nice, right?
 
     // Now update the display page
 
@@ -725,46 +720,50 @@ __interrupt void clkout_isr(void) {
     // HHMMSS is first in the if chain so we can handle the special case when days == 0
     // When days is zero, we continuously show the HHMMSS page for increased excitement.
     if (countdown_display_page==countdown_display_page_t::HHMMSS || countdown_d==0 ) {
-        // The HHMMSS pattern is displayed from the primary LCD buffer
-        // This page will either already have an old HHMMSS or it will be blank.
-        *hours_lcdmemw = hours_lcd_words[countdown_h];
-        *mins_lcdmemw = mins_lcd_words[countdown_m];
-        *secs_lcdmemw = secs_lcd_words[countdown_s];
+
+        *secs_lcdmemw = secs_lcd_words[countdown_s];                // Write the updated seconds to the LCD in the LCDMEM bank
+
+        /*
+            // Wow, this compiler is not good. Below we can remove a whole instruction with 3 cycles that is completely unnecessary.
+
+            asm("        MOV.B     &s+0,r15           ; [] |../tsl-calibre-msp.cpp:1390| ");
+            asm("        RLAM.W    #1,r15                ; [] |../tsl-calibre-msp.cpp:1390| ");
+            asm("        MOV.W     secs_lcd_words+0(r15),(LCDM0W_L+16) ; [] |../tsl-calibre-msp.cpp:1390|");
+        */
+
+
+        // The rest of the HHMMSS pattern is already in the primary LCD bank
         lcd_show_LCDMEM_bank();         // Show the newly painted HHMMSS
 
         countdown_display_page = countdown_display_page_t::BLANK;
 
-    } else if (countdown_display_page==countdown_display_page_t::DAYS) {
+    } else if (countdown_display_page==countdown_display_page_t::BLANK) {
 
-        lcd_show_LCDBMEM_bank();            // The day page is already painted on the LCDBMEM bank so we only have to show it.
-
-        countdown_display_page=countdown_display_page_t::HHMMSS;
-
-
-    } else {  // if countdown_display_page==countdown_display_page_t::BLANK
-
-        // TODO: POWER OPTIMIZE THIS!!!
-
-
-        // TODO: Figure out why this does not work. Somehow blocks the HHMMSS page that comes after the days page. :/
-        // lcd_cls_LCDMEM_nowait();               // Clear the LCDMEM which is currently showing HHMMSS. This will happen aysnchonously, but that is ok becuase it does not matter since a transision to blank will always look OK.
-
-
-        lcd_show_f(LCDMEM, 0, glyph_SPACE  );
-        lcd_show_f(LCDMEM, 1, glyph_SPACE  );
-        lcd_show_f(LCDMEM, 2, glyph_SPACE  );
-        lcd_show_f(LCDMEM, 3, glyph_SPACE  );
-        lcd_show_f(LCDMEM, 4, glyph_SPACE  );
-        lcd_show_f(LCDMEM, 5, glyph_SPACE  );
-        lcd_show_f(LCDMEM, 6, glyph_SPACE  );
-
-
-        lcd_show_LCDMEM_bank();         // Show the newly painted HHMMSS
+        lcd_off();                  // Blank the display.
 
         countdown_display_page=countdown_display_page_t::DAYS;
 
-    }
+        // Tricky part here:
+        // We have to switch the LCD display to the LCDBMEM bank that has the days painted in it here
+        // even though we will not be actually showing it until the next pass when we are on the days page.
+        // This is because if we do the switch below in the DAYS state, we get a visual flash on the LCD
+        // even if we do the switch while the LCD is off. The LCD controller should not do this, but it does. :/
+        // Moving it here with a delay between the bank change and the LCD turning on quenches the flash.
+        // This probably indicates that the ON/OFF only happens on frame boundaries but the bank switches are instant?
 
+        lcd_show_LCDBMEM_bank();            // The day page is already painted on the LCDBMEM bank so we only have to switch to that bank to show it.
+
+
+    } else { // if (countdown_display_page==countdown_display_page_t::DAYS)
+
+        // Note that when we get here, the LCD is already pointing to the LCDBMEM bank with the days painted on it
+        // and the LCD is OFF so all we need to do here is turn on the LCD to let the days shine though. (See the preparations above in the BLANK state code)
+
+        lcd_on();                           // Show the days by turning the LCD back on. Must be after the bank switch or we might see a flicker.
+
+        countdown_display_page=countdown_display_page_t::HHMMSS;
+
+    }
 }
 
 enum class setting_units_t {
@@ -1359,14 +1358,13 @@ void start_countdown_mode( unsigned days, unsigned hours, unsigned mins, unsigne
     lcd_show_day_label_lcdbmem();
     lcd_show_days_lcdbmem( countdown_d );
 
-
     if ( countdown_d >0) {
 
         // If countdown is more than a day, then show the day count initially
         lcd_show_LCDBMEM_bank();
 
         if ( countdown_h==0 && countdown_m==0 && countdown_s==0) {
-            // Go next to the blank page otherwise it looks weird if 5 days turns directly to 4 days without seeing the HHMMSS yet.
+            // Go next to the blank page otherwise it looks weird if 5 days turns directly to 4 days.
             countdown_display_page = countdown_display_page_t::BLANK;
         } else {
             // If there are also some hours, mins, or seconds then show those. This can happen, say, if the setting was 49 hours (=2 days + 1 hour)
@@ -1632,7 +1630,6 @@ int main( void )
 
     __bis_SR_register(LPM4_bits | GIE );                // Enter LPM4
     __no_operation();                                   // For debugger
-
 
     //lcd_test();
     //regulatorTest();

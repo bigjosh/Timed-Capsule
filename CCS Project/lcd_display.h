@@ -119,6 +119,14 @@ void lcd_cls_LCDMEM_nowait();       // Do it blindly, start the process but do n
 
 
 
+// This bit supports flashing LCD applications by turning off all segment lines, while leaving the LCD timing generator and R33 enabled.
+
+void lcd_on();
+
+void lcd_off();
+
+
+
 // Init the "d" in the days display in the secondary LCD buffer
 void lcd_show_day_label_lcdbmem();
 

@@ -677,16 +677,18 @@ void initLCD() {
     corresponding memory location.
  */
 
-// Blank all LCD segments in hardware
+// Instantly blank LCD segments in hardware (does not alter memory)
 
 void lcd_off() {
-    LCDCTL0 &= ~  LCDSON;       // TODO: This would be faster with a direct immediate write
+    LCDCTL0 &= ~LCDSON;     // 0b = All LCD segments are off.
+                            // TODO: This would be faster with a direct immediate write
 }
 
 // Unblank all LCD segments in hardware
 
 void lcd_on() {
-    LCDCTL0 |=  LCDSON;         // TODO: This would be faster with a direct immediate write
+    LCDCTL0 |=  LCDSON;         // 1b = All LCD segments are enabled and on or off according to their corresponding memory location.
+                                // TODO: This would be faster with a direct immediate write
 }
 
 
