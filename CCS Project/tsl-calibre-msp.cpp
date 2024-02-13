@@ -650,13 +650,6 @@ __interrupt void clkout_isr(void) {
     // Do this first since there are a couple ways we can exit this ISR
     RV3032_CLKOUT_PIV;          // Implemented as "MOV.W   &Port_1_2_P2IV,R15"
 
-    /*
-    if (countdown_display_page==countdown_display_page_t::BLANK) {
-        // We have to to the cls here at the top becuase it takes time a
-        lcd_cls_LCDMEM();               // Clear the LCDMEM which is currently showing HHMMSS. This will happen aysnchonously, but that is ok becuase it does not matter since a transision to blank will always look OK.
-    }
-    */
-
     if (countdown_s==0) {
         if (countdown_m==0) {
             if (countdown_h==0) {
@@ -668,25 +661,29 @@ __interrupt void clkout_isr(void) {
                     stop_countdown_mode();
 
                     // Show user we are opening
-                    lcd_on();                       // We might have been showing a blank page?
-                    lcd_show_LCDMEM_bank();
                     lcd_show_open_message();
+                    lcd_on();                       // We might have been showing a blank page?
+                    lcd_show_LCDMEM_bank();         // I don't think there is anyway to get here and not be on LCDMEM, but just to be 100% safe.
 
-                    // First disable the clock interrupt since will do not want it anymore
-
+                    // Disable the clock interrupt since will do not want it anymore
                     disable_rv3032_clkout_interrupt();
 
+                    // The moment we have all been waiting for!!!!
                     unlock();
 
                     // Now go back to setting mode so user can start a new countdown!
                     start_setting_mode();
 
+                    // This return is an interrupt return so it will actually put us back to sleep, and the next wake will be from
+                    // the switch ISR because the user pressed a button or turned the trigger ring.
                     return;
 
                 }
                 countdown_h=24;
                 countdown_d--;
 
+                // Update the days display page in LCMBMEM bank with the new day count
+                // Note this could be much more efficient by only updating the digits that changed etc, but who cares it only happens once every 86,400 seconds (24h*60m*60s).
                 lcd_show_days_lcdbmem(countdown_d);
 
             }
