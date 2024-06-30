@@ -127,8 +127,8 @@ Vcc=2.6V<br>(2xAA after many decades)
 | "888888" | 1.00uA | 2.02uA | 
 
 Good enough. Note that since the TPS7A is only a regulator and not a carge pump that once the Vcc drops below 3V that the LCD will start to 
-get dimmer (actually you will just need to look at it from a lower angle to see the same contract level). I see this as a feature for this
-application since once we get below 3V I want to user to get some feedback that the batteries are getting low, but for other applications or
+get dimmer (actually you will just need to look at it from a lower angle to see the same contrast level). I see this as a feature for this
+application since once we get below 3V then I want to user to get some feedback that the batteries are getting low, but for other applications or
 if you are using alkaline batteries then you might want to switch to the internal charge pump below 3V. 
 
 And just for fun, let's see how much power we could save if we did not need a regulated voltage soruce at all...
@@ -144,12 +144,12 @@ Since we are now going to include the TPS7A in the design, could we get even mor
 
 Vcc=3.55V
 | Test | Direct Vcc | TSP7A2030 |
-| - | -: |
+| - | -: |  -: |
 | Static "123456" | 1.14uA | 1.14uA |
 | 1Hz digit updates | 1.09uA | 1.06uA |
 
-So ever so slight saving. Probably not worth the loss in flexibility since ifonly use the TSP7A20 for the LCD bias voltage and we can not get it, we can 
-just omit it from the board and and instead enable the internal regulator. 
+So ever so slight savings. Probably not worth the loss in flexibility since if we only use the TSP7A20 for the LCD bias voltage and we ever can not get the part, we can 
+just omit it from the board and and instead enable the internal regulator.
 
 ## Build notes
 
