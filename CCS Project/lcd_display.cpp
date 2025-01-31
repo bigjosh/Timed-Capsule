@@ -1064,6 +1064,23 @@ void lcd_show_start_message() {
     }
 }
 
+constexpr glyph_segment_t  hold_message[] = {
+                                                   glyph_H,
+                                                   glyph_o,
+                                                   glyph_1,
+                                                   glyph_d,
+                                                   glyph_SPACE,
+                                                   glyph_5
+};
+
+// Show "First Start"
+void lcd_show_hold_message() {
+
+    for( byte i=0; i<DIGITPLACE_COUNT; i++ ) {
+        lcd_show_f(  i , hold_message[ DIGITPLACE_COUNT - 1- i] );        // digit place 12 is rightmost, so reverse order for text
+    }
+}
+
 
 
 // Refresh day 100's places digits

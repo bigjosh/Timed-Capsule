@@ -169,5 +169,9 @@ void lcd_blinking_mode_doublebuffer();
 // Show " OPEn"
 void lcd_show_open_message();
 
+// Show "Hold  "
+void lcd_show_hold_message();
+
+
 
 #endif /* LCD_DISPLAY_H_ */
